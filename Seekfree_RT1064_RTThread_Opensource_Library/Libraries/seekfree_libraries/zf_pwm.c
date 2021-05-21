@@ -83,13 +83,13 @@ void pwm_iomuxc(PWMCH_enum pwmch)
         case PWM2_MODULE2_CHB_C11:  iomuxc_pinconf(C11,ALT2,PWM_PIN_CONF); break;
         case PWM2_MODULE2_CHB_E11:  iomuxc_pinconf(E11,ALT1,PWM_PIN_CONF); break;
                                                    
-        case PWM2_MODULE3_CHA_B0 :  iomuxc_pinconf(B0 ,ALT1,PWM_PIN_CONF); break;
+        case PWM2_MODULE3_CHA_B0 :  iomuxc_pinconf(B0 ,ALT0,PWM_PIN_CONF); break;
         case PWM2_MODULE3_CHA_C18:  iomuxc_pinconf(C18,ALT6,PWM_PIN_CONF); break;
         case PWM2_MODULE3_CHA_D2 :  iomuxc_pinconf(D2 ,ALT2,PWM_PIN_CONF); break;
         case PWM2_MODULE3_CHA_E19:  iomuxc_pinconf(E19,ALT1,PWM_PIN_CONF); break;
         case PWM2_MODULE3_CHA_B9 :  iomuxc_pinconf(B9 ,ALT1,PWM_PIN_CONF); break;
                                                    
-        case PWM2_MODULE3_CHB_B1 :  iomuxc_pinconf(B1 ,ALT1,PWM_PIN_CONF); break;
+        case PWM2_MODULE3_CHB_B1 :  iomuxc_pinconf(B1 ,ALT0,PWM_PIN_CONF); break;
         case PWM2_MODULE3_CHB_C19:  iomuxc_pinconf(C19,ALT6,PWM_PIN_CONF); break;
         case PWM2_MODULE3_CHB_D3 :  iomuxc_pinconf(D3 ,ALT2,PWM_PIN_CONF); break;
         case PWM2_MODULE3_CHB_E20:  iomuxc_pinconf(E20,ALT1,PWM_PIN_CONF); break;
