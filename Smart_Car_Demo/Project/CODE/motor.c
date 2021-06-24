@@ -24,8 +24,8 @@ void motor_pid(int16 expect_speed)
 void motor_control(int32 duty_l, int32 duty_r)
 {
     //对占空比限幅
-	limit(duty_l, PWM_DUTY_MAX);
-	limit(duty_r, PWM_DUTY_MAX);
+	duty_l = limit(duty_l, PWM_DUTY_MAX);
+	duty_r = limit(duty_r, PWM_DUTY_MAX);
     
     if(duty_l >= 0)											// 左侧正转
     {
