@@ -16,8 +16,6 @@ void timer1_pit_entry(void *parameter)
     {
         //采集编码器数据
         encoder_get();
-        
-        //电机控制速度环  
     }
 
     if(0 == (time%5))
@@ -30,12 +28,7 @@ void timer1_pit_entry(void *parameter)
         
         //根据电磁信号计算车身位置
         elec_calculate();
-        
-        
-        //将图像计算出来的车身位置与电磁信号计算出的车身位置进行融合得到更好数据
-        //然后进行车模控制
     }
-
     
     //控制电机转动
     motor_control(10000, 10000);
