@@ -23,16 +23,16 @@
 
 void CSI_IRQHandler(void)
 {
-    rt_interrupt_leave();
+    rt_interrupt_enter();
     
     CSI_DriverIRQHandler();     //调用SDK自带的中断函数 这个函数最后会调用我们设置的回调函数
     __DSB();                    //数据同步隔离
-    rt_interrupt_enter();
+    rt_interrupt_leave();
 }
 
 void PIT_IRQHandler(void)
 {
-    rt_interrupt_leave();
+    rt_interrupt_enter();
     if(PIT_FLAG_GET(PIT_CH0))
     {
         PIT_FLAG_CLEAR(PIT_CH0);
@@ -55,18 +55,18 @@ void PIT_IRQHandler(void)
     }
 
     __DSB();
-    rt_interrupt_enter();
+    rt_interrupt_leave();
 }
 
 
 void GPIO2_Combined_16_31_IRQHandler(void)
 {
-    rt_interrupt_leave();
+    rt_interrupt_enter();
     if(GET_GPIO_FLAG(C16))
     {
         CLEAR_GPIO_FLAG(C16);//清除中断标志位
     }
-    rt_interrupt_enter();
+    rt_interrupt_leave();
     
 }
 
@@ -74,7 +74,7 @@ void GPIO2_Combined_16_31_IRQHandler(void)
 
 void GPIO2_Combined_0_15_IRQHandler(void)
 {
-    rt_interrupt_leave();
+    rt_interrupt_enter();
     if(GET_GPIO_FLAG(MT9V03X_VSYNC_PIN))
     {
         //不用清除标志位，标志位在mt9v03x_vsync函数内部会清除
@@ -85,7 +85,7 @@ void GPIO2_Combined_0_15_IRQHandler(void)
         //不用清除标志位，标志位在scc8660_vsync函数内部会清除
         if(CAMERA_COLOR == flexio_camera_type)scc8660_vsync();
     }
-    rt_interrupt_enter();
+    rt_interrupt_leave();
 }
 
 

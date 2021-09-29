@@ -1778,14 +1778,14 @@ void LPUART1_RX_DriverIRQHandler(void)
 #else
 void LPUART1_DriverIRQHandler(void)
 {
-    rt_interrupt_leave();
+    rt_interrupt_enter();
     s_lpuartIsr(LPUART1, s_lpuartHandle[1]);
 /* Add for ARM errata 838869, affects Cortex-M4, Cortex-M4F Store immediate overlapping
   exception return operation might vector to incorrect interrupt */
 #if defined __CORTEX_M && (__CORTEX_M == 4U)
     __DSB();
 #endif
-    rt_interrupt_enter();
+    rt_interrupt_leave();
 }
 #endif
 #endif
@@ -1814,14 +1814,14 @@ void LPUART2_RX_DriverIRQHandler(void)
 #else
 void LPUART2_DriverIRQHandler(void)
 {
-    rt_interrupt_leave();
+    rt_interrupt_enter();
     s_lpuartIsr(LPUART2, s_lpuartHandle[2]);
 /* Add for ARM errata 838869, affects Cortex-M4, Cortex-M4F Store immediate overlapping
   exception return operation might vector to incorrect interrupt */
 #if defined __CORTEX_M && (__CORTEX_M == 4U)
     __DSB();
 #endif
-    rt_interrupt_enter();
+    rt_interrupt_leave();
 }
 #endif
 #endif
@@ -1849,14 +1849,14 @@ void LPUART3_RX_DriverIRQHandler(void)
 #else
 void LPUART3_DriverIRQHandler(void)
 {
-    rt_interrupt_leave();
+    rt_interrupt_enter();
     s_lpuartIsr(LPUART3, s_lpuartHandle[3]);
 /* Add for ARM errata 838869, affects Cortex-M4, Cortex-M4F Store immediate overlapping
   exception return operation might vector to incorrect interrupt */
 #if defined __CORTEX_M && (__CORTEX_M == 4U)
     __DSB();
 #endif
-    rt_interrupt_enter();
+    rt_interrupt_leave();
 }
 #endif
 #endif
@@ -1884,14 +1884,14 @@ void LPUART4_RX_DriverIRQHandler(void)
 #else
 void LPUART4_DriverIRQHandler(void)
 {
-    rt_interrupt_leave();
+    rt_interrupt_enter();
     s_lpuartIsr(LPUART4, s_lpuartHandle[4]);
 /* Add for ARM errata 838869, affects Cortex-M4, Cortex-M4F Store immediate overlapping
   exception return operation might vector to incorrect interrupt */
 #if defined __CORTEX_M && (__CORTEX_M == 4U)
     __DSB();
 #endif
-    rt_interrupt_enter();
+    rt_interrupt_leave();
 }
 #endif
 #endif
@@ -1919,14 +1919,14 @@ void LPUART5_RX_DriverIRQHandler(void)
 #else
 void LPUART5_DriverIRQHandler(void)
 {
-    rt_interrupt_leave();
+    rt_interrupt_enter();
     s_lpuartIsr(LPUART5, s_lpuartHandle[5]);
 /* Add for ARM errata 838869, affects Cortex-M4, Cortex-M4F Store immediate overlapping
   exception return operation might vector to incorrect interrupt */
 #if defined __CORTEX_M && (__CORTEX_M == 4U)
     __DSB();
 #endif
-    rt_interrupt_enter();
+    rt_interrupt_leave();
 }
 #endif
 #endif
@@ -1954,14 +1954,14 @@ void LPUART6_RX_DriverIRQHandler(void)
 #else
 void LPUART6_DriverIRQHandler(void)
 {
-    rt_interrupt_leave();
+    rt_interrupt_enter();
     s_lpuartIsr(LPUART6, s_lpuartHandle[6]);
 /* Add for ARM errata 838869, affects Cortex-M4, Cortex-M4F Store immediate overlapping
   exception return operation might vector to incorrect interrupt */
 #if defined __CORTEX_M && (__CORTEX_M == 4U)
     __DSB();
 #endif
-    rt_interrupt_enter();
+    rt_interrupt_leave();
 }
 #endif
 #endif
@@ -1989,14 +1989,14 @@ void LPUART7_RX_DriverIRQHandler(void)
 #else
 void LPUART7_DriverIRQHandler(void)
 {
-    rt_interrupt_leave();
+    rt_interrupt_enter();
     s_lpuartIsr(LPUART7, s_lpuartHandle[7]);
 /* Add for ARM errata 838869, affects Cortex-M4, Cortex-M4F Store immediate overlapping
   exception return operation might vector to incorrect interrupt */
 #if defined __CORTEX_M && (__CORTEX_M == 4U)
     __DSB();
 #endif
-    rt_interrupt_enter();
+    rt_interrupt_leave();
 }
 #endif
 #endif
@@ -2024,14 +2024,14 @@ void LPUART8_RX_DriverIRQHandler(void)
 #else
 void LPUART8_DriverIRQHandler(void)
 {
-    rt_interrupt_leave();
+    rt_interrupt_enter();
     s_lpuartIsr(LPUART8, s_lpuartHandle[8]);
 /* Add for ARM errata 838869, affects Cortex-M4, Cortex-M4F Store immediate overlapping
   exception return operation might vector to incorrect interrupt */
 #if defined __CORTEX_M && (__CORTEX_M == 4U)
     __DSB();
 #endif
-    rt_interrupt_enter();
+    rt_interrupt_leave();
 }
 #endif
 #endif
