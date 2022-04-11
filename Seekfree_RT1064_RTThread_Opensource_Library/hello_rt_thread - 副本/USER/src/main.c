@@ -66,7 +66,6 @@ static rt_sem_t encoder_rr = RT_NULL; // 创建指向信号量的指针
 
 static int32 v_fl_expect = 0, v_fr_expect = 0, v_rl_expect = -100, v_rr_expect = 0;
 
-uint32 i = 0;
 // **************************** 变量定义 ****************************
 
 // **************************** 函数定义 ****************************
@@ -105,7 +104,6 @@ int main(void)
     // * --------------------------------外设初始化--------------------------------
 
     // * --------------------------------GPIO 初始化--------------------------------
-    gpio_init(B9, GPO, 0, GPIO_PIN_CONFIG);
     gpio_init(FL_DIR, GPO, 0, GPIO_PIN_CONFIG);
     gpio_init(FR_DIR, GPO, 0, GPIO_PIN_CONFIG);
     gpio_init(RL_DIR, GPO, 0, GPIO_PIN_CONFIG);
@@ -151,7 +149,8 @@ int main(void)
     {
         //此处编写需要循环执行的代码
         gpio_toggle(B9);
-        rt_thread_mdelay(500);
+
+        rt_thread_mdelay(100);
     }
 }
 
@@ -321,8 +320,8 @@ void PIDController_Init(PIDController *pid)
     pid->limMinInt = -0.5 * PWM_DUTY_MAX;
 
     pid->T = 0.1;
-    pid->Kp = 75.14;
-    pid->Ki = 13653.37;
+    pid->Kp = 1;
+    pid->Ki = 0.5;
     pid->Kd = 0.05;
     pid->tau = 0.02;
 }
@@ -442,78 +441,42 @@ void sweep_pwm_duty(int argc, char **argv)
 
     else if (!rt_strcmp(argv[1], "fl"))
     {
-        for (i = 0; i < PWM_DUTY_MAX; i += 10)
+        for (uint32 i = 0; i < PWM_DUTY_MAX; i++)
         {
             pwm_duty(FL_PWM, i);
-            // rt_kprintf("%d,", i);
             rt_thread_mdelay(10);
         }
-        for (; i > 0; i -= 10)
-        {
-            pwm_duty(FL_PWM, i);
-            // rt_kprintf("%d,", i);
-            rt_thread_mdelay(10);
-        }
+        pwm_duty(FL_PWM, 0);
     }
     else if (!rt_strcmp(argv[1], "fr"))
     {
-        for (i = 0; i < PWM_DUTY_MAX; i += 10)
+        for (uint32 i = 0; i < PWM_DUTY_MAX; i++)
         {
             pwm_duty(FR_PWM, i);
-            // rt_kprintf("%d,", i);
-
             rt_thread_mdelay(10);
         }
-        for (; i > 0; i -= 10)
-        {
-            pwm_duty(FR_PWM, i);
-            // rt_kprintf("%d,", i);
-
-            rt_thread_mdelay(10);
-        }
+        pwm_duty(FR_PWM, 0);
     }
     else if (!rt_strcmp(argv[1], "rl"))
     {
-        for (i = 0; i < PWM_DUTY_MAX; i += 10)
+        for (uint32 i = 0; i < PWM_DUTY_MAX; i++)
         {
             pwm_duty(RL_PWM, i);
-            // rt_kprintf("%d,", i);
-
             rt_thread_mdelay(10);
         }
-        for (; i > 0; i -= 10)
-        {
-            pwm_duty(RL_PWM, i);
-            // rt_kprintf("%d,", i);
-
-            rt_thread_mdelay(10);
-        }
+        pwm_duty(RL_PWM, 0);
     }
     else if (!rt_strcmp(argv[1], "rr"))
     {
-        for (i = 0; i < PWM_DUTY_MAX; i += 10)
+        for (uint32 i = 0; i < PWM_DUTY_MAX; i++)
         {
             pwm_duty(RR_PWM, i);
-            // rt_kprintf("%d,", i);
-
             rt_thread_mdelay(10);
         }
-        for (; i > 0; i -= 10)
-        {
-            pwm_duty(RR_PWM, i);
-            // rt_kprintf("%d,", i);
-
-            rt_thread_mdelay(10);
-        }
+        pwm_duty(RR_PWM, 0);
     }
     else
         return;
-    i = 0;
-
-    pwm_duty(FL_PWM, 0);
-    pwm_duty(FR_PWM, 0);
-    pwm_duty(RL_PWM, 0);
-    pwm_duty(RR_PWM, 0);
     rt_kprintf("Succeeded!\n");
     return;
 }
@@ -526,7 +489,7 @@ void minimum_pulse_counter_entry(void *parameter)
         result = rt_sem_take(encoder_rl, RT_WAITING_FOREVER);
         if (result == RT_EOK) // 获取编码器信号量成功
         {
-            rt_kprintf("%d,%d,%d,%d,%d\n", i, (int16)encoder_fl->value, (int16)encoder_fr->value, (int16)encoder_rl->value, (int16)encoder_rr->value, (int16)encoder_fl->value);
+            rt_kprintf("%d,%d,%d,%d\n", (int16)encoder_fl->value, (int16)encoder_fr->value, (int16)encoder_rl->value, (int16)encoder_rr->value, (int16)encoder_fl->value);
         }
     }
 }
@@ -559,11 +522,11 @@ int create_system_identification_thread(void)
 
     tid = rt_thread_create("read_encoder_thread",     // 线程名称
                            read_encoder_thread_entry, // 线程入口函数
-                           RT_NULL,                   // 线程参数
-                           1024,                      // 1024 个字节的栈空间
-                           5,                         // 线程优先级为5，数值越小，优先级越高，0为最高优先级。
-                                                      // 可以通过修改rt_config.h中的RT_THREAD_PRIORITY_MAX宏定义(默认值为8)来修改最大支持的优先级
-                           5);                        // 时间片为5
+                           RT_NULL,                     // 线程参数
+                           1024,                        // 1024 个字节的栈空间
+                           5,                           // 线程优先级为5，数值越小，优先级越高，0为最高优先级。
+                                                        // 可以通过修改rt_config.h中的RT_THREAD_PRIORITY_MAX宏定义(默认值为8)来修改最大支持的优先级
+                           5);                          // 时间片为5
 
     rt_kprintf("create dynamic thread: read_encoder_thread.\n");
     if (tid != RT_NULL) // 线程创建成功

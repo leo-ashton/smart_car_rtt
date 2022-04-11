@@ -3,7 +3,7 @@
 <title>Static Call Graph - [.\Objects\RT106X.axf]</title></head>
 <body><HR>
 <H1>Static Call Graph for image .\Objects\RT106X.axf</H1><HR>
-<BR><P>#&#060CALLGRAPH&#062# ARM Linker, 6160001: Last Updated: Mon Apr 11 11:41:02 2022
+<BR><P>#&#060CALLGRAPH&#062# ARM Linker, 6160001: Last Updated: Sun Apr 10 19:46:56 2022
 <BR><P>
 <H3>Maximum Stack Usage =       1104 bytes + Unknown(Cycles, Untraceable Function Pointers)</H3><H3>
 Call chain for Maximum Stack Depth:</H3>
@@ -3167,7 +3167,7 @@ Global Symbols
 </UL>
 <BR>[Address Reference Count : 1]<UL><LI> cmd.o(FSymTab)
 </UL>
-<P><STRONG><a name="[25a]"></a>$Super$$main</STRONG> (Thumb, 298 bytes, Stack size 24 bytes, main.o(.text.main))
+<P><STRONG><a name="[25a]"></a>$Super$$main</STRONG> (Thumb, 284 bytes, Stack size 24 bytes, main.o(.text.main))
 <BR><BR>[Stack]<UL><LI>Max Depth = 1056<LI>Call Chain = $Super$$main &rArr; pwm_init &rArr; CLOCK_GetFreq &rArr; CLOCK_GetPerClkFreq &rArr; CLOCK_GetIpgFreq &rArr; CLOCK_GetAhbFreq &rArr; CLOCK_GetPeriphClkFreq &rArr; CLOCK_GetSysPfdFreq &rArr; CLOCK_GetPllFreq &rArr; __aeabi_assert &rArr; DbgConsole_Printf &rArr; StrFormatPrintf &rArr; ConvertFloatRadixNumToString &rArr; __hardfp_pow &rArr; sqrt
 </UL>
 <BR>[Calls]<UL><LI><a href="#[25f]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;rt_thread_mdelay
@@ -3191,8 +3191,8 @@ Global Symbols
 </UL>
 <BR>[Address Reference Count : 1]<UL><LI> components.o(.text.rt_application_init)
 </UL>
-<P><STRONG><a name="[e5]"></a>minimum_pulse_counter_entry</STRONG> (Thumb, 142 bytes, Stack size 32 bytes, main.o(.text.minimum_pulse_counter_entry))
-<BR><BR>[Stack]<UL><LI>Max Depth = 412<LI>Call Chain = minimum_pulse_counter_entry &rArr; rt_sem_take &rArr; rt_ipc_list_suspend &rArr; rt_thread_suspend &rArr; rt_timer_stop &rArr; rt_object_get_type &rArr; rt_assert_handler &rArr; rt_kprintf &rArr; rt_vsnprintf &rArr; print_number &rArr; divide
+<P><STRONG><a name="[e5]"></a>minimum_pulse_counter_entry</STRONG> (Thumb, 126 bytes, Stack size 24 bytes, main.o(.text.minimum_pulse_counter_entry))
+<BR><BR>[Stack]<UL><LI>Max Depth = 404<LI>Call Chain = minimum_pulse_counter_entry &rArr; rt_sem_take &rArr; rt_ipc_list_suspend &rArr; rt_thread_suspend &rArr; rt_timer_stop &rArr; rt_object_get_type &rArr; rt_assert_handler &rArr; rt_kprintf &rArr; rt_vsnprintf &rArr; print_number &rArr; divide
 </UL>
 <BR>[Calls]<UL><LI><a href="#[262]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;rt_sem_take
 <LI><a href="#[1ee]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;rt_kprintf
@@ -4334,8 +4334,8 @@ Global Symbols
 <BR><BR>[Called By]<UL><LI><a href="#[a]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;SysTick_Handler
 </UL>
 
-<P><STRONG><a name="[121]"></a>sweep_pwm_duty</STRONG> (Thumb, 718 bytes, Stack size 24 bytes, main.o(.text.sweep_pwm_duty))
-<BR><BR>[Stack]<UL><LI>Max Depth = 848<LI>Call Chain = sweep_pwm_duty &rArr; pwm_duty &rArr; PWM_UpdatePwmDutycycle &rArr; __aeabi_assert &rArr; DbgConsole_Printf &rArr; StrFormatPrintf &rArr; ConvertFloatRadixNumToString &rArr; __hardfp_pow &rArr; sqrt
+<P><STRONG><a name="[121]"></a>sweep_pwm_duty</STRONG> (Thumb, 346 bytes, Stack size 32 bytes, main.o(.text.sweep_pwm_duty))
+<BR><BR>[Stack]<UL><LI>Max Depth = 856<LI>Call Chain = sweep_pwm_duty &rArr; pwm_duty &rArr; PWM_UpdatePwmDutycycle &rArr; __aeabi_assert &rArr; DbgConsole_Printf &rArr; StrFormatPrintf &rArr; ConvertFloatRadixNumToString &rArr; __hardfp_pow &rArr; sqrt
 </UL>
 <BR>[Calls]<UL><LI><a href="#[25f]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;rt_thread_mdelay
 <LI><a href="#[276]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;pwm_duty
