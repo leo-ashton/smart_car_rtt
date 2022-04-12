@@ -64,9 +64,10 @@ static rt_sem_t encoder_fr = RT_NULL; // 创建指向信号量的指针
 static rt_sem_t encoder_rl = RT_NULL; // 创建指向信号量的指针
 static rt_sem_t encoder_rr = RT_NULL; // 创建指向信号量的指针
 
-static int32 v_fl_expect = 0, v_fr_expect = 0, v_rl_expect = -100, v_rr_expect = 0;
+static int32 v_fl_expect = 0, v_fr_expect = 0, v_rl_expect = 0, v_rr_expect = 0;
 
-uint32 i = 0;
+uint32 i = 0; // ? 调试系统辨识时展示当前占空比的变量
+uint8 pid_enabled = 1;
 // **************************** 变量定义 ****************************
 
 // **************************** 函数定义 ****************************
@@ -85,6 +86,8 @@ static void dir_set(int argc, char **argv);
 
 void sweep_pwm_duty(int argc, char **argv);
 void minimum_pulse_counter_entry(void *parameter);
+static void duty_set(int argc, char **argv);
+static void enable_pid(int argc, char **argv);
 
 // **************************** 函数定义 ****************************
 
@@ -93,6 +96,8 @@ void minimum_pulse_counter_entry(void *parameter);
 MSH_CMD_EXPORT(speed_set, "speed_set sample - speed_set fl 100");
 MSH_CMD_EXPORT(dir_set, "dir_set sample - dir_set fl 1");
 MSH_CMD_EXPORT(sweep_pwm_duty, "sweep_pwm_duty sample - sweep_pwm_duty fl");
+MSH_CMD_EXPORT(duty_set, "sweep_pwm_duty sample - duty_set fl 50");
+MSH_CMD_EXPORT(enable_pid, "dir_set sample - dir_set fl 1");
 
 // **************************** Finsh 初始化 ****************************
 
@@ -139,8 +144,8 @@ int main(void)
     // * --------------------------------线程初始化--------------------------------
 
     // ! 启动需要的线程
-    // create_main_dynamic_thread();
-    create_system_identification_thread();
+    create_main_dynamic_thread();
+    // create_system_identification_thread();
 
     // * --------------------------------线程初始化--------------------------------
 
@@ -265,10 +270,13 @@ void pid_motor_control_entry(void *parameter)
             // * -------------------------------- 更新当前速度 -------------------------------- *//
 
             // * 将速度的计算放在这里, 因为信号量必须是整数, 浮点数不能通过它在线程间传递.
-            revised_fl_duty = PIDController_weight_update(&fl_pid_controller, v_fl_expect, v_fl);
-            revised_fr_duty = PIDController_weight_update(&fr_pid_controller, v_fr_expect, v_fr);
-            revised_rl_duty = PIDController_weight_update(&rl_pid_controller, v_rl_expect, v_rl);
-            revised_rr_duty = PIDController_weight_update(&rr_pid_controller, v_rr_expect, v_rr);
+            if (pid_enabled)
+            {
+                revised_fl_duty = PIDController_weight_update(&fl_pid_controller, v_fl_expect, v_fl);
+                revised_fr_duty = PIDController_weight_update(&fr_pid_controller, v_fr_expect, v_fr);
+                revised_rl_duty = PIDController_weight_update(&rl_pid_controller, v_rl_expect, v_rl);
+                revised_rr_duty = PIDController_weight_update(&rr_pid_controller, v_rr_expect, v_rr);
+            }
 
             revised_rl_duty_int = revised_rl_duty;
 
@@ -276,7 +284,7 @@ void pid_motor_control_entry(void *parameter)
 
             dir_fl = (revised_fl_duty > 0 ? 0 : 1);
             dir_fr = (revised_fr_duty > 0 ? 0 : 1);
-            // dir_rl = (revised_rl_duty > 0 ? 1 : 0);
+            dir_rl = (revised_rl_duty > 0 ? 0 : 1);
             dir_rr = (revised_rr_duty > 0 ? 0 : 1);
 
             gpio_set(FL_DIR, dir_fl);
@@ -290,14 +298,17 @@ void pid_motor_control_entry(void *parameter)
             // * -------------------------------- 更新转速 -------------------------------- *//
 
             uint32 abs_revised_rl_duty = fabs(revised_rl_duty);
-            rt_kprintf("%ld,%ld,%ld,%ld\n", (int32)v_fl, (int32)v_fr, (int32)v_rl, (int32)v_rr);
+            rt_kprintf("%ld,%ld,%ld,%ld\n", (int32)(100 * v_fl), (int32)(100 * v_fr), (int32)(100 * v_rl), (int32)(100 * v_rr));
+
             // rt_kprintf("%ld\n", (int32)revised_fl_duty);
             // rt_kprintf("%d,%ld,%ld,%d\n", (int16)encoder_rl->value, abs_revised_rl_duty, revised_rl_duty_int, (int32)v_rl);
-
-            pwm_duty(FL_PWM, fabs(revised_fl_duty));
-            pwm_duty(FR_PWM, fabs(revised_fr_duty));
-            pwm_duty(RL_PWM, fabs(revised_rl_duty));
-            pwm_duty(RR_PWM, fabs(revised_rr_duty));
+            if (pid_enabled)
+            {
+                pwm_duty(FL_PWM, fabs(revised_fl_duty));
+                pwm_duty(FR_PWM, fabs(revised_fr_duty));
+                pwm_duty(RL_PWM, fabs(revised_rl_duty));
+                pwm_duty(RR_PWM, fabs(revised_rr_duty));
+            }
 
             // * -------------------------------- 更新转速 -------------------------------- *//
         }
@@ -321,8 +332,8 @@ void PIDController_Init(PIDController *pid)
     pid->limMinInt = -0.5 * PWM_DUTY_MAX;
 
     pid->T = 0.1;
-    pid->Kp = 75.14;
-    pid->Ki = 13653.37;
+    pid->Kp = 73.03;
+    pid->Ki = 7;
     pid->Kd = 0.05;
     pid->tau = 0.02;
 }
@@ -378,24 +389,32 @@ static void speed_set(int argc, char **argv)
     {
         v_fl_expect = atoi(argv[2]);
         rt_kprintf("v_fl_expect=%d\n", v_fl_expect);
+        rt_enter_critical();
+        rt_kprintf("99999,99999,99999,99999\n");
+        rt_exit_critical();
         return;
     }
     else if (!rt_strcmp(argv[1], "fr"))
     {
         v_fr_expect = atoi(argv[2]);
         rt_kprintf("v_fr_expect=%d\n", v_fr_expect);
+        rt_kprintf("99999,99999,99999,99999\n");
         return;
     }
     else if (!rt_strcmp(argv[1], "rl"))
     {
         v_rl_expect = atoi(argv[2]);
         rt_kprintf("v_rl_expect=%d\n", v_rl_expect);
+        rt_kprintf("99999,99999,99999,99999\n");
         return;
     }
     else if (!rt_strcmp(argv[1], "rr"))
     {
         v_rr_expect = atoi(argv[2]);
         rt_kprintf("v_rr_expect=%d\n", v_rr_expect);
+        rt_enter_critical();
+        rt_kprintf("99999,99999,99999,99999\n");
+        rt_exit_critical();
         return;
     }
     else
@@ -578,4 +597,57 @@ int create_system_identification_thread(void)
     }
 
     return 0;
+}
+
+static void duty_set(int argc, char **argv)
+{
+
+    if (argc < 2)
+    {
+        rt_kprintf("Invalid arguments!\n");
+        return;
+    }
+    else if (!rt_strcmp(argv[1], "fl"))
+    {
+        rt_enter_critical();
+        rt_kprintf("99999,99999,99999,99999\n");
+        rt_exit_critical();
+        pwm_duty(FL_PWM, duty_convert(atoi(argv[2])));
+    }
+    else if (!rt_strcmp(argv[1], "fr"))
+    {
+        rt_enter_critical();
+        rt_kprintf("99999,99999,99999,99999\n");
+        rt_exit_critical();
+        pwm_duty(FR_PWM, duty_convert(atoi(argv[2])));
+    }
+    else if (!rt_strcmp(argv[1], "rl"))
+    {
+        rt_enter_critical();
+        rt_kprintf("99999,99999,99999,99999\n");
+        rt_exit_critical();
+
+        pwm_duty(RL_PWM, duty_convert(atoi(argv[2])));
+    }
+    else if (!rt_strcmp(argv[1], "rr"))
+    {
+        rt_enter_critical();
+        rt_kprintf("99999,99999,99999,99999\n");
+        rt_exit_critical();
+
+        pwm_duty(RR_PWM, duty_convert(atoi(argv[2])));
+    }
+    else
+        return;
+    rt_kprintf("Succeeded!\n");
+    return;
+}
+
+static void enable_pid(int argc, char **argv)
+{
+    pid_enabled = atoi(argv[1]);
+    rt_enter_critical();
+    rt_kprintf("PID controller status: %d.\n", pid_enabled);
+    rt_exit_critical();
+    return;
 }
