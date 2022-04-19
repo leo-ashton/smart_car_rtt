@@ -1,61 +1,10 @@
 #include "headfile.h"
 #include "math.h"
 #include <rtthread.h>
-// **************************** 宏定义 ****************************
-#define FL_PWM (PWM1_MODULE3_CHB_D1)
-#define FR_PWM (PWM1_MODULE3_CHA_D0)
-#define RL_PWM (PWM1_MODULE1_CHA_D14)
-#define RR_PWM (PWM1_MODULE1_CHB_D15)
 
-#define FL_DIR (D3)
-#define FR_DIR (D2)
-#define RL_DIR (D12)
-#define RR_DIR (D13)
-
-#define duty_convert(x) (x / 100.0 * PWM_DUTY_MAX) // x为期望的占空比, 该函数将期望占空比直接转换为 pwm_duty 函数接受的参数
-
-#define encoder_gear_count (45.0)
-#define encoder_line_count (1024.0)
-#define wheel_week_length (19.163) // 轮子周长, 单位为厘米
-#define wheel_gear_count (104.0)
-// **************************** 宏定义 ****************************
-
-// **************************** 结构体类型定义 ****************************
-
-typedef struct PIDController
-{
-
-    /* Controller gains */
-    float Kp;
-    float Ki;
-    float Kd;
-
-    /* Derivative low-pass filter time constant */
-    float tau;
-
-    /* Output limits */
-    float limMin;
-    float limMax;
-
-    /* Integrator limits */
-    float limMinInt;
-    float limMaxInt;
-
-    /* Sample time (in seconds) */
-    float T;
-
-    /* Controller "memory" */
-    float integrator;
-    float prevError; /* Required for integrator */
-    float differentiator;
-    float prevMeasurement; /* Required for differentiator */
-
-    /* Controller output */
-    float out;
-
-} PIDController;
-
-// **************************** 结构体类型定义 ****************************
+// TODO 我之前读的是转速还是速度?
+// TODO 右前轮自激振荡
+// * 对电机系统辨识时,调整零极点的个数.
 
 // **************************** 变量定义 ****************************
 
@@ -68,18 +17,19 @@ static int32 v_fl_expect = 0, v_fr_expect = 0, v_rl_expect = 0, v_rr_expect = 0;
 
 uint32 i = 0; // ? 调试系统辨识时展示当前占空比的变量
 uint8 pid_enabled = 1;
+
 // **************************** 变量定义 ****************************
 
 // **************************** 函数定义 ****************************
-
-void read_encoder_thread_entry(void *parameter);
-void pid_motor_control_entry(void *parameter);
-
+void devices_init();
 int create_main_dynamic_thread(void);
-int create_system_identification_thread(void);
+void read_encoder_thread_entry(void *parameter);
 
 void PIDController_Init(PIDController *pid);
+void pid_motor_control_entry(void *parameter);
 float PIDController_weight_update(PIDController *pid, float setpoint, float measurement);
+
+int create_system_identification_thread(void);
 
 static void speed_set(int argc, char **argv);
 static void dir_set(int argc, char **argv);
@@ -89,26 +39,48 @@ void minimum_pulse_counter_entry(void *parameter);
 static void duty_set(int argc, char **argv);
 static void enable_pid(int argc, char **argv);
 
+void direction_control(char *direction, float speed);
+
 // **************************** 函数定义 ****************************
 
-// **************************** Finsh 初始化 ****************************
-
+// **************************** msh 初始化 ****************************
 MSH_CMD_EXPORT(speed_set, "speed_set sample - speed_set fl 100");
 MSH_CMD_EXPORT(dir_set, "dir_set sample - dir_set fl 1");
 MSH_CMD_EXPORT(sweep_pwm_duty, "sweep_pwm_duty sample - sweep_pwm_duty fl");
 MSH_CMD_EXPORT(duty_set, "sweep_pwm_duty sample - duty_set fl 50");
 MSH_CMD_EXPORT(enable_pid, "dir_set sample - dir_set fl 1");
-
-// **************************** Finsh 初始化 ****************************
+// **************************** msh 初始化 ****************************
 
 int main(void)
 {
     //此处编写用户代码(例如：外设初始化代码等)
+    devices_init();
 
-    // * --------------------------------外设初始化--------------------------------
+    // * --------------------------------信号量初始化--------------------------------
+    encoder_fl = rt_sem_create("encoder_fl", 0, RT_IPC_FLAG_PRIO);
+    encoder_fr = rt_sem_create("encoder_fr", 0, RT_IPC_FLAG_PRIO);
+    encoder_rl = rt_sem_create("encoder_rl", 0, RT_IPC_FLAG_PRIO);
+    encoder_rr = rt_sem_create("encoder_rr", 0, RT_IPC_FLAG_PRIO);
+    // * --------------------------------信号量初始化--------------------------------
 
-    // * --------------------------------外设初始化--------------------------------
+    // * --------------------------------线程初始化--------------------------------
+    // ! 启动你需要的线程
+    create_main_dynamic_thread();
+    // create_system_identification_thread();
+    // * --------------------------------线程初始化--------------------------------
 
+    EnableGlobalIRQ(0);
+    while (1)
+    {
+        //此处编写需要循环执行的代码
+        gpio_toggle(B9);
+        rt_thread_mdelay(500);
+    }
+}
+
+void devices_init()
+{
+    // 完成硬件的初始化.
     // * --------------------------------GPIO 初始化--------------------------------
     gpio_init(B9, GPO, 0, GPIO_PIN_CONFIG);
     gpio_init(FL_DIR, GPO, 0, GPIO_PIN_CONFIG);
@@ -131,33 +103,6 @@ int main(void)
     pwm_init(RL_PWM, 50, 0);
     pwm_init(RR_PWM, 50, 0);
     // * -------------------------------- 电机初始化 --------------------------------
-
-    // * --------------------------------信号量初始化--------------------------------
-
-    encoder_fl = rt_sem_create("encoder_fl", 0, RT_IPC_FLAG_PRIO);
-    encoder_fr = rt_sem_create("encoder_fr", 0, RT_IPC_FLAG_PRIO);
-    encoder_rl = rt_sem_create("encoder_rl", 0, RT_IPC_FLAG_PRIO);
-    encoder_rr = rt_sem_create("encoder_rr", 0, RT_IPC_FLAG_PRIO);
-
-    // * --------------------------------信号量初始化--------------------------------
-
-    // * --------------------------------线程初始化--------------------------------
-
-    // ! 启动需要的线程
-    create_main_dynamic_thread();
-    // create_system_identification_thread();
-
-    // * --------------------------------线程初始化--------------------------------
-
-    EnableGlobalIRQ(0);
-    // * 外设初始化
-
-    while (1)
-    {
-        //此处编写需要循环执行的代码
-        gpio_toggle(B9);
-        rt_thread_mdelay(500);
-    }
 }
 
 void read_encoder_thread_entry(void *parameter)
@@ -266,6 +211,7 @@ void pid_motor_control_entry(void *parameter)
             v_fr = (((int16)encoder_fr->value / encoder_line_count) * encoder_gear_count / wheel_gear_count) * wheel_week_length * 10;
             v_rl = (((int16)encoder_rl->value / encoder_line_count) * encoder_gear_count / wheel_gear_count) * wheel_week_length * 10;
             v_rr = (((int16)encoder_rr->value / encoder_line_count) * encoder_gear_count / wheel_gear_count) * wheel_week_length * 10;
+            // rt_kprintf("%d,%d,%d,%d", (int16)v_fl, (int16)v_fr, (int16)v_rl, (int16)v_rr);
             // v_rl = (((int16)(encoder_rl->value) / encoder_line_count) * encoder_gear_count / wheel_gear_count) * wheel_week_length * 10;
             // * -------------------------------- 更新当前速度 -------------------------------- *//
 
@@ -332,8 +278,8 @@ void PIDController_Init(PIDController *pid)
     pid->limMinInt = -0.5 * PWM_DUTY_MAX;
 
     pid->T = 0.1;
-    pid->Kp = 73.03;
-    pid->Ki = 7;
+    pid->Kp = 13.125;
+    pid->Ki = 5.49;
     pid->Kd = 0.05;
     pid->tau = 0.02;
 }
@@ -601,7 +547,6 @@ int create_system_identification_thread(void)
 
 static void duty_set(int argc, char **argv)
 {
-
     if (argc < 2)
     {
         rt_kprintf("Invalid arguments!\n");
@@ -650,4 +595,30 @@ static void enable_pid(int argc, char **argv)
     rt_kprintf("PID controller status: %d.\n", pid_enabled);
     rt_exit_critical();
     return;
+}
+
+void direction_control(char *direction, float speed)
+{
+    // ! 未完成
+    uint8 dir = 0;
+    uint8 fl, fr, rl, rr = 0;
+    if (*direction == "w")
+        dir = 1;
+    else if (*direction == "s")
+        dir = 2;
+    else if (*direction == "a")
+        dir = 3;
+    else if (*direction == "d")
+        dir = 4;
+    // 前后左右
+    switch (dir)
+    {
+    case 1:
+        fl = rl = 1;
+        fr = rr = -1;
+        break;
+
+    default:
+        break;
+    }
 }
