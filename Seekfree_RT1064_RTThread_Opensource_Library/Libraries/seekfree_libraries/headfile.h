@@ -104,6 +104,8 @@
 #define encoder_line_count (1024.0)
 #define wheel_week_length (19.163) // 轮子周长, 单位为厘米
 #define wheel_gear_count (104.0)
+
+#define encoder_sample_time_ms (50.0)
 // **************************** 用户宏定义 ****************************
 
 // **************************** 用户结构体类型定义 ****************************
@@ -138,6 +140,7 @@ typedef struct PIDController
 
     /* Controller output */
     float out;
+    float prev_out;
 
 } PIDController;
 

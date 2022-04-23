@@ -4,7 +4,8 @@
 
 // TODO 我之前读的是转速还是速度?
 // TODO 右前轮自激振荡
-// * 对电机系统辨识时,调整零极点的个数.
+// * 对电机系统辨识时,调整零极点的个数, 一般使用二阶震荡模型, 即 2 极点 0 零点.
+// TODO 调整编码器采样时间后, 记得修改速度公式里的脉冲读取时间
 
 // **************************** 变量定义 ****************************
 
@@ -15,7 +16,6 @@ static rt_sem_t encoder_rr = RT_NULL; // 创建指向信号量的指针
 
 static int32 v_fl_expect = 0, v_fr_expect = 0, v_rl_expect = 0, v_rr_expect = 0;
 
-uint32 i = 0; // ? 调试系统辨识时展示当前占空比的变量
 uint8 pid_enabled = 1;
 
 // **************************** 变量定义 ****************************
@@ -34,7 +34,6 @@ int create_system_identification_thread(void);
 static void speed_set(int argc, char **argv);
 static void dir_set(int argc, char **argv);
 
-void sweep_pwm_duty(int argc, char **argv);
 void minimum_pulse_counter_entry(void *parameter);
 static void duty_set(int argc, char **argv);
 static void enable_pid(int argc, char **argv);
@@ -46,7 +45,6 @@ void direction_control(char *direction, float speed);
 // **************************** msh 初始化 ****************************
 MSH_CMD_EXPORT(speed_set, "speed_set sample - speed_set fl 100");
 MSH_CMD_EXPORT(dir_set, "dir_set sample - dir_set fl 1");
-MSH_CMD_EXPORT(sweep_pwm_duty, "sweep_pwm_duty sample - sweep_pwm_duty fl");
 MSH_CMD_EXPORT(duty_set, "sweep_pwm_duty sample - duty_set fl 50");
 MSH_CMD_EXPORT(enable_pid, "dir_set sample - dir_set fl 1");
 // **************************** msh 初始化 ****************************
@@ -127,7 +125,7 @@ void read_encoder_thread_entry(void *parameter)
         qtimer_quad_clear(QTIMER_1, QTIMER1_TIMER2_C2);
         qtimer_quad_clear(QTIMER_2, QTIMER2_TIMER0_C3);
         qtimer_quad_clear(QTIMER_3, QTIMER3_TIMER2_B18);
-        rt_thread_mdelay(10);
+        rt_thread_mdelay(encoder_sample_time_ms);
     }
 }
 
@@ -203,14 +201,19 @@ void pid_motor_control_entry(void *parameter)
 
     while (1)
     {
-        result = rt_sem_take(encoder_rl, RT_WAITING_FOREVER);
+        result = rt_sem_take(encoder_fl, RT_WAITING_FOREVER) && rt_sem_take(encoder_fr, RT_WAITING_FOREVER) && rt_sem_take(encoder_rl, RT_WAITING_FOREVER) && rt_sem_take(encoder_rr, RT_WAITING_FOREVER);
         if (result == RT_EOK) // 获取编码器信号量成功
         {
             // * -------------------------------- 更新当前速度 -------------------------------- *//
-            v_fl = (((int16)encoder_fl->value / encoder_line_count) * encoder_gear_count / wheel_gear_count) * wheel_week_length * 10;
-            v_fr = (((int16)encoder_fr->value / encoder_line_count) * encoder_gear_count / wheel_gear_count) * wheel_week_length * 10;
-            v_rl = (((int16)encoder_rl->value / encoder_line_count) * encoder_gear_count / wheel_gear_count) * wheel_week_length * 10;
-            v_rr = (((int16)encoder_rr->value / encoder_line_count) * encoder_gear_count / wheel_gear_count) * wheel_week_length * 10;
+            v_fl = (((int16)encoder_fl->value / encoder_line_count) * encoder_gear_count / wheel_gear_count) * wheel_week_length * 20;
+            v_fr = (((int16)encoder_fr->value / encoder_line_count) * encoder_gear_count / wheel_gear_count) * wheel_week_length * 20;
+            v_rl = (((int16)encoder_rl->value / encoder_line_count) * encoder_gear_count / wheel_gear_count) * wheel_week_length * 20;
+            v_rr = (((int16)encoder_rr->value / encoder_line_count) * encoder_gear_count / wheel_gear_count) * wheel_week_length * 20;
+            rt_sem_release(encoder_fl);
+            rt_sem_release(encoder_fr);
+            rt_sem_release(encoder_rl);
+            rt_sem_release(encoder_rr);
+
             // rt_kprintf("%d,%d,%d,%d", (int16)v_fl, (int16)v_fr, (int16)v_rl, (int16)v_rr);
             // v_rl = (((int16)(encoder_rl->value) / encoder_line_count) * encoder_gear_count / wheel_gear_count) * wheel_week_length * 10;
             // * -------------------------------- 更新当前速度 -------------------------------- *//
@@ -228,15 +231,15 @@ void pid_motor_control_entry(void *parameter)
 
             // * -------------------------------- 更新转向 -------------------------------- *//
 
-            dir_fl = (revised_fl_duty > 0 ? 0 : 1);
-            dir_fr = (revised_fr_duty > 0 ? 0 : 1);
-            dir_rl = (revised_rl_duty > 0 ? 0 : 1);
-            dir_rr = (revised_rr_duty > 0 ? 0 : 1);
+            // dir_fl = (revised_fl_duty > 0 ? 0 : 1);
+            // dir_fr = (revised_fr_duty > 0 ? 0 : 1);
+            // dir_rl = (revised_rl_duty > 0 ? 0 : 1);
+            // dir_rr = (revised_rr_duty > 0 ? 0 : 1);
 
-            gpio_set(FL_DIR, dir_fl);
-            gpio_set(FR_DIR, dir_fr);
-            gpio_set(RL_DIR, dir_rl);
-            gpio_set(RR_DIR, dir_rr);
+            // gpio_set(FL_DIR, dir_fl);
+            // gpio_set(FR_DIR, dir_fr);
+            // gpio_set(RL_DIR, dir_rl);
+            // gpio_set(RR_DIR, dir_rr);
 
             // rt_kprintf("dir_fl=%d\n", dir_fl);
             // * -------------------------------- 更新转向 -------------------------------- *//
@@ -271,23 +274,31 @@ void PIDController_Init(PIDController *pid)
     pid->prevMeasurement = 0.0f;
 
     pid->out = 0.0f;
-
+    pid->prev_out = 0.0f;
     pid->limMax = PWM_DUTY_MAX;
     pid->limMin = -PWM_DUTY_MAX;
-    pid->limMaxInt = 0.5 * PWM_DUTY_MAX;
-    pid->limMinInt = -0.5 * PWM_DUTY_MAX;
+    pid->limMaxInt = PWM_DUTY_MAX;
+    pid->limMinInt = -PWM_DUTY_MAX;
 
-    pid->T = 0.1;
-    pid->Kp = 13.125;
-    pid->Ki = 5.49;
-    pid->Kd = 0.05;
-    pid->tau = 0.02;
+    // pid->T = 0.1;
+    // pid->Kp = 13.125;
+    // pid->Ki = 5.49;
+    // pid->Kd = 0.05;
+    // pid->tau = 0.02;
+
+    pid->T = encoder_sample_time_ms / 1000;
+    pid->Kp = 119.66;
+    pid->Ki = 1316.34;
+    pid->Kd = 2.7;
+    pid->tau = 1 / 2493.55;
 }
 
 float PIDController_weight_update(PIDController *pid, float setpoint, float measurement)
 {
 
-    float error = setpoint - measurement;                                                   // 误差
+    float error = setpoint - measurement; // 误差
+    if (fabs(error) < 3)
+        return pid->prev_out;
     float proportional = pid->Kp * error;                                                   // 比例项
     pid->integrator = pid->integrator + 0.5f * pid->Ki * pid->T * (error + pid->prevError); // 积分项
 
@@ -319,7 +330,7 @@ float PIDController_weight_update(PIDController *pid, float setpoint, float meas
     /* Store error and measurement for later use */
     pid->prevError = error;
     pid->prevMeasurement = measurement;
-
+    pid->prev_out = pid->out;
     /* Return controller output */
     return pid->out;
 }
@@ -397,91 +408,7 @@ static void dir_set(int argc, char **argv)
     return;
 }
 
-void sweep_pwm_duty(int argc, char **argv)
-{
-    if (argc < 1)
-    {
-        rt_kprintf("Invalid arguments!\n");
-        return;
-    }
 
-    else if (!rt_strcmp(argv[1], "fl"))
-    {
-        for (i = 0; i < PWM_DUTY_MAX; i += 10)
-        {
-            pwm_duty(FL_PWM, i);
-            // rt_kprintf("%d,", i);
-            rt_thread_mdelay(10);
-        }
-        for (; i > 0; i -= 10)
-        {
-            pwm_duty(FL_PWM, i);
-            // rt_kprintf("%d,", i);
-            rt_thread_mdelay(10);
-        }
-    }
-    else if (!rt_strcmp(argv[1], "fr"))
-    {
-        for (i = 0; i < PWM_DUTY_MAX; i += 10)
-        {
-            pwm_duty(FR_PWM, i);
-            // rt_kprintf("%d,", i);
-
-            rt_thread_mdelay(10);
-        }
-        for (; i > 0; i -= 10)
-        {
-            pwm_duty(FR_PWM, i);
-            // rt_kprintf("%d,", i);
-
-            rt_thread_mdelay(10);
-        }
-    }
-    else if (!rt_strcmp(argv[1], "rl"))
-    {
-        for (i = 0; i < PWM_DUTY_MAX; i += 10)
-        {
-            pwm_duty(RL_PWM, i);
-            // rt_kprintf("%d,", i);
-
-            rt_thread_mdelay(10);
-        }
-        for (; i > 0; i -= 10)
-        {
-            pwm_duty(RL_PWM, i);
-            // rt_kprintf("%d,", i);
-
-            rt_thread_mdelay(10);
-        }
-    }
-    else if (!rt_strcmp(argv[1], "rr"))
-    {
-        for (i = 0; i < PWM_DUTY_MAX; i += 10)
-        {
-            pwm_duty(RR_PWM, i);
-            // rt_kprintf("%d,", i);
-
-            rt_thread_mdelay(10);
-        }
-        for (; i > 0; i -= 10)
-        {
-            pwm_duty(RR_PWM, i);
-            // rt_kprintf("%d,", i);
-
-            rt_thread_mdelay(10);
-        }
-    }
-    else
-        return;
-    i = 0;
-
-    pwm_duty(FL_PWM, 0);
-    pwm_duty(FR_PWM, 0);
-    pwm_duty(RL_PWM, 0);
-    pwm_duty(RR_PWM, 0);
-    rt_kprintf("Succeeded!\n");
-    return;
-}
 
 void minimum_pulse_counter_entry(void *parameter)
 {
