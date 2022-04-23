@@ -38,6 +38,7 @@
                 "C:\\Keil_v5\\ARM\\ARMCC\\include",
                 "C:\\Keil_v5\\ARM\\ARMCC\\include\\rw",
                 "d:\\OneDriveStu\\SmartVision\\Code\\RT1064_RTThread_Library\\Seekfree_RT1064_RTThread_Opensource_Library\\Libraries\\doc",
+                "d:\\OneDriveStu\\SmartVision\\Code\\RT1064_RTThread_Library\\Seekfree_RT1064_RTThread_Opensource_Library\\hello_rt_thread\\MDK",
                 "d:\\OneDriveStu\\SmartVision\\Code\\RT1064_RTThread_Library\\Seekfree_RT1064_RTThread_Opensource_Library\\Libraries\\rttherad_libraries\\bsp",
                 "d:\\OneDriveStu\\SmartVision\\Code\\RT1064_RTThread_Library\\Seekfree_RT1064_RTThread_Opensource_Library\\Libraries\\rttherad_libraries\\src",
                 "d:\\OneDriveStu\\SmartVision\\Code\\RT1064_RTThread_Library\\Seekfree_RT1064_RTThread_Opensource_Library\\Libraries\\rttherad_libraries\\include",
@@ -177,6 +178,7 @@
                 "C:\\Keil_v5\\ARM\\ARMCLANG\\include\\arm_linux_compat",
                 "C:\\Keil_v5\\ARM\\ARMCLANG\\include\\libcxx",
                 "d:\\OneDriveStu\\SmartVision\\Code\\RT1064_RTThread_Library\\Seekfree_RT1064_RTThread_Opensource_Library\\Libraries\\doc",
+                "d:\\OneDriveStu\\SmartVision\\Code\\RT1064_RTThread_Library\\Seekfree_RT1064_RTThread_Opensource_Library\\hello_rt_thread\\MDK",
                 "d:\\OneDriveStu\\SmartVision\\Code\\RT1064_RTThread_Library\\Seekfree_RT1064_RTThread_Opensource_Library\\Libraries\\rttherad_libraries\\src",
                 "d:\\OneDriveStu\\SmartVision\\Code\\RT1064_RTThread_Library\\Seekfree_RT1064_RTThread_Opensource_Library\\Libraries\\rttherad_libraries\\libcpu\\arm\\cortex-m7"
             ],

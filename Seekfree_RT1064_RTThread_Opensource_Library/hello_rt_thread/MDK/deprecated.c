@@ -1,5 +1,7 @@
 #include "headfile.h"
 
+// 一些已经不需要的函数
+
 uint32 i = 0; // ? 调试系统辨识时展示当前占空比的变量
 
 // MSH_CMD_EXPORT(sweep_pwm_duty, "sweep_pwm_duty sample - sweep_pwm_duty fl");

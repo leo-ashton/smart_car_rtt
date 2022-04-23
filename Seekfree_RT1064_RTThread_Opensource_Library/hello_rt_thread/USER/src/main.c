@@ -7,14 +7,18 @@
 // * 对电机系统辨识时,调整零极点的个数, 一般使用二阶震荡模型, 即 2 极点 0 零点.
 // TODO 调整编码器采样时间后, 记得修改速度公式里的脉冲读取时间
 
+// * 左后轮调好了, 速度注意为负 右后为正 右前为正 左前为正
+
 // **************************** 变量定义 ****************************
 
-static rt_sem_t encoder_fl = RT_NULL; // 创建指向信号量的指针
-static rt_sem_t encoder_fr = RT_NULL; // 创建指向信号量的指针
-static rt_sem_t encoder_rl = RT_NULL; // 创建指向信号量的指针
-static rt_sem_t encoder_rr = RT_NULL; // 创建指向信号量的指针
+static rt_sem_t encoder_fl_sem = RT_NULL; // 创建指向信号量的指针
+static rt_sem_t encoder_fr_sem = RT_NULL; // 创建指向信号量的指针
+static rt_sem_t encoder_rl_sem = RT_NULL; // 创建指向信号量的指针
+static rt_sem_t encoder_rr_sem = RT_NULL; // 创建指向信号量的指针
 
 static int32 v_fl_expect = 0, v_fr_expect = 0, v_rl_expect = 0, v_rr_expect = 0;
+
+int32 encoder_fl_val = 0, encoder_fr_val = 0, encoder_rl_val = 0, encoder_rr_val = 0;
 
 uint8 pid_enabled = 1;
 
@@ -55,10 +59,10 @@ int main(void)
     devices_init();
 
     // * --------------------------------信号量初始化--------------------------------
-    encoder_fl = rt_sem_create("encoder_fl", 0, RT_IPC_FLAG_PRIO);
-    encoder_fr = rt_sem_create("encoder_fr", 0, RT_IPC_FLAG_PRIO);
-    encoder_rl = rt_sem_create("encoder_rl", 0, RT_IPC_FLAG_PRIO);
-    encoder_rr = rt_sem_create("encoder_rr", 0, RT_IPC_FLAG_PRIO);
+    encoder_fl_sem = rt_sem_create("encoder_fl", 0, RT_IPC_FLAG_PRIO);
+    encoder_fr_sem = rt_sem_create("encoder_fr", 0, RT_IPC_FLAG_PRIO);
+    encoder_rl_sem = rt_sem_create("encoder_rl", 0, RT_IPC_FLAG_PRIO);
+    encoder_rr_sem = rt_sem_create("encoder_rr", 0, RT_IPC_FLAG_PRIO);
     // * --------------------------------信号量初始化--------------------------------
 
     // * --------------------------------线程初始化--------------------------------
@@ -105,21 +109,25 @@ void devices_init()
 
 void read_encoder_thread_entry(void *parameter)
 {
-    float v_fl, v_fr, v_rl, v_rr;
-    v_fl = v_fr = v_rl = v_rr = 0;
+    // float v_fl, v_fr, v_rl, v_rr;
+    // v_fl = v_fr = v_rl = v_rr = 0;
 
     while (1)
     {
         //读取编码器计数值
-        encoder_fl->value = (rt_uint16_t)qtimer_quad_get(QTIMER_1, QTIMER1_TIMER2_C2);
-        encoder_fr->value = (rt_uint16_t)qtimer_quad_get(QTIMER_1, QTIMER1_TIMER0_C0);
-        encoder_rl->value = (rt_uint16_t)qtimer_quad_get(QTIMER_2, QTIMER2_TIMER0_C3);
-        encoder_rr->value = (rt_uint16_t)qtimer_quad_get(QTIMER_3, QTIMER3_TIMER2_B18);
+        //    int32 encoder_fl_val = 0, encoder_fr_val = 0, encoder_rl_val = 0, encoder_rr_val = 0;
 
-        rt_sem_release(encoder_fl);
-        rt_sem_release(encoder_fr);
-        rt_sem_release(encoder_rl);
-        rt_sem_release(encoder_rr);
+        encoder_fl_val = qtimer_quad_get(QTIMER_1, QTIMER1_TIMER2_C2);
+        rt_sem_release(encoder_fl_sem);
+
+        encoder_fr_val = qtimer_quad_get(QTIMER_1, QTIMER1_TIMER0_C0);
+        rt_sem_release(encoder_fr_sem);
+
+        encoder_rl_val = qtimer_quad_get(QTIMER_2, QTIMER2_TIMER0_C3);
+        rt_sem_release(encoder_rl_sem);
+
+        encoder_rr_val = qtimer_quad_get(QTIMER_3, QTIMER3_TIMER2_B18);
+        rt_sem_release(encoder_rr_sem);
 
         qtimer_quad_clear(QTIMER_1, QTIMER1_TIMER0_C0);
         qtimer_quad_clear(QTIMER_1, QTIMER1_TIMER2_C2);
@@ -179,6 +187,7 @@ int create_main_dynamic_thread(void)
 
 void pid_motor_control_entry(void *parameter)
 {
+
     // 读取并打印编码器的值
     static rt_err_t result;
     float v_fl, v_fr, v_rl, v_rr = 0; // ! 均为测量值
@@ -198,27 +207,31 @@ void pid_motor_control_entry(void *parameter)
     PIDController_Init(&rr_pid_controller);
 
     // v_rl_expect=-150;
+    rt_thread_mdelay(500);
 
     while (1)
     {
-        result = rt_sem_take(encoder_fl, RT_WAITING_FOREVER) && rt_sem_take(encoder_fr, RT_WAITING_FOREVER) && rt_sem_take(encoder_rl, RT_WAITING_FOREVER) && rt_sem_take(encoder_rr, RT_WAITING_FOREVER);
+        result = rt_sem_take(encoder_fl_sem, RT_WAITING_FOREVER);
+        result = rt_sem_take(encoder_fr_sem, RT_WAITING_FOREVER);
+        result = rt_sem_take(encoder_rl_sem, RT_WAITING_FOREVER);
+        result = rt_sem_take(encoder_rr_sem, RT_WAITING_FOREVER);
         if (result == RT_EOK) // 获取编码器信号量成功
         {
             // * -------------------------------- 更新当前速度 -------------------------------- *//
-            v_fl = (((int16)encoder_fl->value / encoder_line_count) * encoder_gear_count / wheel_gear_count) * wheel_week_length * 20;
-            v_fr = (((int16)encoder_fr->value / encoder_line_count) * encoder_gear_count / wheel_gear_count) * wheel_week_length * 20;
-            v_rl = (((int16)encoder_rl->value / encoder_line_count) * encoder_gear_count / wheel_gear_count) * wheel_week_length * 20;
-            v_rr = (((int16)encoder_rr->value / encoder_line_count) * encoder_gear_count / wheel_gear_count) * wheel_week_length * 20;
-            rt_sem_release(encoder_fl);
-            rt_sem_release(encoder_fr);
-            rt_sem_release(encoder_rl);
-            rt_sem_release(encoder_rr);
+            // v_fl = ((encoder_fl_val / encoder_line_count) * encoder_gear_count / wheel_gear_count) * wheel_week_length * 20;
+            // v_fr = ((encoder_fr_val / encoder_line_count) * encoder_gear_count / wheel_gear_count) * wheel_week_length * 20;
+            // v_rl = ((encoder_rl_val / encoder_line_count) * encoder_gear_count / wheel_gear_count) * wheel_week_length * 20;
+            // v_rr = ((encoder_rr_val / encoder_line_count) * encoder_gear_count / wheel_gear_count) * wheel_week_length * 20;
+
+            v_fl = ((encoder_fl_val / encoder_line_count) * encoder_gear_count / wheel_gear_count) * wheel_week_length * 20;
+            v_fr = ((encoder_fr_val / encoder_line_count) * encoder_gear_count / wheel_gear_count) * wheel_week_length * 20;
+            v_rl = ((encoder_rl_val / encoder_line_count) * encoder_gear_count / wheel_gear_count) * wheel_week_length * 20;
+            v_rr = ((encoder_rr_val / encoder_line_count) * encoder_gear_count / wheel_gear_count) * wheel_week_length * 20;
 
             // rt_kprintf("%d,%d,%d,%d", (int16)v_fl, (int16)v_fr, (int16)v_rl, (int16)v_rr);
             // v_rl = (((int16)(encoder_rl->value) / encoder_line_count) * encoder_gear_count / wheel_gear_count) * wheel_week_length * 10;
             // * -------------------------------- 更新当前速度 -------------------------------- *//
 
-            // * 将速度的计算放在这里, 因为信号量必须是整数, 浮点数不能通过它在线程间传递.
             if (pid_enabled)
             {
                 revised_fl_duty = PIDController_weight_update(&fl_pid_controller, v_fl_expect, v_fl);
@@ -226,8 +239,6 @@ void pid_motor_control_entry(void *parameter)
                 revised_rl_duty = PIDController_weight_update(&rl_pid_controller, v_rl_expect, v_rl);
                 revised_rr_duty = PIDController_weight_update(&rr_pid_controller, v_rr_expect, v_rr);
             }
-
-            revised_rl_duty_int = revised_rl_duty;
 
             // * -------------------------------- 更新转向 -------------------------------- *//
 
@@ -246,9 +257,9 @@ void pid_motor_control_entry(void *parameter)
 
             // * -------------------------------- 更新转速 -------------------------------- *//
 
-            uint32 abs_revised_rl_duty = fabs(revised_rl_duty);
+            // uint32 abs_revised_rl_duty = fabs(revised_rl_duty);
             rt_kprintf("%ld,%ld,%ld,%ld\n", (int32)(100 * v_fl), (int32)(100 * v_fr), (int32)(100 * v_rl), (int32)(100 * v_rr));
-
+            // PRINTF("%f,%f,%f,%f\n", v_fl, v_fr, v_rl, v_rr);
             // rt_kprintf("%ld\n", (int32)revised_fl_duty);
             // rt_kprintf("%d,%ld,%ld,%d\n", (int16)encoder_rl->value, abs_revised_rl_duty, revised_rl_duty_int, (int32)v_rl);
             if (pid_enabled)
@@ -287,10 +298,10 @@ void PIDController_Init(PIDController *pid)
     // pid->tau = 0.02;
 
     pid->T = encoder_sample_time_ms / 1000;
-    pid->Kp = 119.66;
-    pid->Ki = 1316.34;
-    pid->Kd = 2.7;
-    pid->tau = 1 / 2493.55;
+    pid->Kp = 25.15;
+    pid->Ki = 185.31;
+    pid->Kd = -2.61;
+    pid->tau = 4.76;
 }
 
 float PIDController_weight_update(PIDController *pid, float setpoint, float measurement)
@@ -408,17 +419,16 @@ static void dir_set(int argc, char **argv)
     return;
 }
 
-
-
 void minimum_pulse_counter_entry(void *parameter)
 {
+    // !
     uint8 result = 1;
     while (1)
     {
-        result = rt_sem_take(encoder_rl, RT_WAITING_FOREVER);
+        result = rt_sem_take(encoder_rl_sem, RT_WAITING_FOREVER);
         if (result == RT_EOK) // 获取编码器信号量成功
         {
-            rt_kprintf("%d,%d,%d,%d,%d\n", i, (int16)encoder_fl->value, (int16)encoder_fr->value, (int16)encoder_rl->value, (int16)encoder_rr->value, (int16)encoder_fl->value);
+            rt_kprintf("%d,%d,%d,%d\n", encoder_fl_val, encoder_fr_val, encoder_rl_val, encoder_rr_val);
         }
     }
 }
