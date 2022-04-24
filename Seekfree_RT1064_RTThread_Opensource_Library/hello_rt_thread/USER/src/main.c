@@ -8,6 +8,7 @@
 // TODO 调整编码器采样时间后, 记得修改速度公式里的脉冲读取时间
 
 // * 左后轮调好了, 速度注意为负 右后为正 右前为正 左前为正
+// 之前震荡的原因是什么? 把 behavior 调整到 robust 一侧就好了
 
 // **************************** 变量定义 ****************************
 
@@ -42,7 +43,8 @@ void minimum_pulse_counter_entry(void *parameter);
 static void duty_set(int argc, char **argv);
 static void enable_pid(int argc, char **argv);
 
-void direction_control(char *direction, float speed);
+void direction_control(char direction, float speed);
+static void direction_control_m(int argc, char **argv);
 
 // **************************** 函数定义 ****************************
 
@@ -51,6 +53,7 @@ MSH_CMD_EXPORT(speed_set, "speed_set sample - speed_set fl 100");
 MSH_CMD_EXPORT(dir_set, "dir_set sample - dir_set fl 1");
 MSH_CMD_EXPORT(duty_set, "sweep_pwm_duty sample - duty_set fl 50");
 MSH_CMD_EXPORT(enable_pid, "dir_set sample - dir_set fl 1");
+MSH_CMD_EXPORT(direction_control_m, "direction_control sample - direction_control_m w 50");
 // **************************** msh 初始化 ****************************
 
 int main(void)
@@ -109,9 +112,6 @@ void devices_init()
 
 void read_encoder_thread_entry(void *parameter)
 {
-    // float v_fl, v_fr, v_rl, v_rr;
-    // v_fl = v_fr = v_rl = v_rr = 0;
-
     while (1)
     {
         //读取编码器计数值
@@ -238,39 +238,33 @@ void pid_motor_control_entry(void *parameter)
                 revised_fr_duty = PIDController_weight_update(&fr_pid_controller, v_fr_expect, v_fr);
                 revised_rl_duty = PIDController_weight_update(&rl_pid_controller, v_rl_expect, v_rl);
                 revised_rr_duty = PIDController_weight_update(&rr_pid_controller, v_rr_expect, v_rr);
-            }
 
-            // * -------------------------------- 更新转向 -------------------------------- *//
+                // * -------------------------------- 更新转向 -------------------------------- *//
 
-            // dir_fl = (revised_fl_duty > 0 ? 0 : 1);
-            // dir_fr = (revised_fr_duty > 0 ? 0 : 1);
-            // dir_rl = (revised_rl_duty > 0 ? 0 : 1);
-            // dir_rr = (revised_rr_duty > 0 ? 0 : 1);
+                dir_fl = (revised_fl_duty > 0 ? 0 : 1);
+                dir_fr = (revised_fr_duty > 0 ? 0 : 1);
+                dir_rl = (revised_rl_duty > 0 ? 1 : 0);
+                dir_rr = (revised_rr_duty > 0 ? 0 : 1);
 
-            // gpio_set(FL_DIR, dir_fl);
-            // gpio_set(FR_DIR, dir_fr);
-            // gpio_set(RL_DIR, dir_rl);
-            // gpio_set(RR_DIR, dir_rr);
+                gpio_set(FL_DIR, dir_fl);
+                gpio_set(FR_DIR, dir_fr);
+                gpio_set(RL_DIR, dir_rl);
+                gpio_set(RR_DIR, dir_rr);
 
-            // rt_kprintf("dir_fl=%d\n", dir_fl);
-            // * -------------------------------- 更新转向 -------------------------------- *//
+                // rt_kprintf("dir_fl=%d\n", dir_fl);
+                // * -------------------------------- 更新转向 -------------------------------- *//
 
-            // * -------------------------------- 更新转速 -------------------------------- *//
+                // * -------------------------------- 更新转速 -------------------------------- *//
 
-            // uint32 abs_revised_rl_duty = fabs(revised_rl_duty);
-            rt_kprintf("%ld,%ld,%ld,%ld\n", (int32)(100 * v_fl), (int32)(100 * v_fr), (int32)(100 * v_rl), (int32)(100 * v_rr));
-            // PRINTF("%f,%f,%f,%f\n", v_fl, v_fr, v_rl, v_rr);
-            // rt_kprintf("%ld\n", (int32)revised_fl_duty);
-            // rt_kprintf("%d,%ld,%ld,%d\n", (int16)encoder_rl->value, abs_revised_rl_duty, revised_rl_duty_int, (int32)v_rl);
-            if (pid_enabled)
-            {
                 pwm_duty(FL_PWM, fabs(revised_fl_duty));
                 pwm_duty(FR_PWM, fabs(revised_fr_duty));
                 pwm_duty(RL_PWM, fabs(revised_rl_duty));
                 pwm_duty(RR_PWM, fabs(revised_rr_duty));
+
+                // * -------------------------------- 更新转速 -------------------------------- *//
             }
 
-            // * -------------------------------- 更新转速 -------------------------------- *//
+            rt_kprintf("%ld,%ld,%ld,%ld\n", (int32)(100 * v_fl), (int32)(100 * v_fr), (int32)(100 * v_rl), (int32)(100 * v_rr));
         }
     }
 }
@@ -425,7 +419,11 @@ void minimum_pulse_counter_entry(void *parameter)
     uint8 result = 1;
     while (1)
     {
+        result = rt_sem_take(encoder_fl_sem, RT_WAITING_FOREVER);
+        result = rt_sem_take(encoder_fr_sem, RT_WAITING_FOREVER);
         result = rt_sem_take(encoder_rl_sem, RT_WAITING_FOREVER);
+        result = rt_sem_take(encoder_rr_sem, RT_WAITING_FOREVER);
+
         if (result == RT_EOK) // 获取编码器信号量成功
         {
             rt_kprintf("%d,%d,%d,%d\n", encoder_fl_val, encoder_fr_val, encoder_rl_val, encoder_rr_val);
@@ -534,28 +532,50 @@ static void enable_pid(int argc, char **argv)
     return;
 }
 
-void direction_control(char *direction, float speed)
+void direction_control(char direction, float speed)
 {
     // ! 未完成
     uint8 dir = 0;
-    uint8 fl, fr, rl, rr = 0;
-    if (*direction == "w")
+    int8 fl, fr, rl, rr = 0;
+    if (direction == 'w')
         dir = 1;
-    else if (*direction == "s")
-        dir = 2;
-    else if (*direction == "a")
+    // else if (direction == "s")
+    //     dir = 2;
+    else if (direction == 'a')
         dir = 3;
-    else if (*direction == "d")
-        dir = 4;
+    // else if (direction == "d")
+    //     dir = 4;
     // 前后左右
     switch (dir)
     {
     case 1:
-        fl = rl = 1;
-        fr = rr = -1;
+        fl = rl = -1;
+        fr = rr = 1;
         break;
-
+    case 3:
+        rl = -1;
+        fr = 1;
+        fl = 1;
+        rr = -1;
+        break;
     default:
         break;
     }
+    v_fl_expect = speed * fl;
+    v_fr_expect = speed * fr;
+    v_rl_expect = speed * rl;
+    v_rr_expect = speed * rr;
+    return;
+}
+
+static void direction_control_m(int argc, char **argv)
+{
+    if (argc < 2)
+    {
+        rt_kprintf("Invalid arguments!\n");
+        return;
+    }
+    direction_control(*argv[1], atoi(argv[2]));
+    PRINTF("Dir: %c, speed=%d\n", *argv[1], atoi(argv[2]));
+    return;
 }
