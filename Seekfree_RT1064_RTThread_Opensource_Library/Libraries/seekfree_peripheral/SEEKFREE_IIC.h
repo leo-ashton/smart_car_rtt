@@ -14,12 +14,12 @@
  * @Software 		IAR 8.3 or MDK 5.28
  * @Taobao   		https://seekfree.taobao.com/
  * @date       		2019-04-30
- * @note		
+ * @note
 					接线定义：
-					------------------------------------ 
+					------------------------------------
 						SCL                 查看SEEKFREE_IIC文件内的SEEKFREE_SCL宏定义
 						SDA                 查看SEEKFREE_IIC文件内的SEEKFREE_SDA宏定义
-					------------------------------------ 
+					------------------------------------
  ********************************************************************************************************************/
 
 
@@ -32,9 +32,9 @@
 
 
 
-
-#define SEEKFREE_SCL    C23                           //定义SCL引脚  可任意更改为其他IO
-#define SEEKFREE_SDA    C22                           //定义SDA引脚  可任意更改为其他IO
+// ! 已修改 5.4
+#define SEEKFREE_SCL    C7                           //定义SCL引脚  可任意更改为其他IO
+#define SEEKFREE_SDA    C6                           //定义SDA引脚  可任意更改为其他IO
 
 typedef enum IIC       //DAC模块
 {

@@ -25,7 +25,7 @@
 #define TMP_L 0x1C
 #define PWR_M 0x3E
 
-typedef struct
+typedef struct INT16_XYZ
 {
 	int16 X;
 	int16 Y;

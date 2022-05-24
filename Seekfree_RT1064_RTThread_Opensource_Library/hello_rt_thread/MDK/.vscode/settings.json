@@ -2,6 +2,7 @@
     "files.associations": {
         "math.h": "c",
         "RTTHREAD.H": "cpp",
-        "headfile.h": "c"
+        "headfile.h": "c",
+        "seekfree_iic.h": "c"
     }
 }

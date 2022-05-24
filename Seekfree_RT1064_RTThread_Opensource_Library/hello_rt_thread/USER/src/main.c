@@ -1,13 +1,13 @@
 #include "headfile.h"
 #include "math.h"
+#include "gy_85.h"
+#include "user_debug.h"
 #include <rtthread.h>
 
-// TODO 我之前读的是转速还是速度?
-// TODO 右前轮自激振荡
 // * 对电机系统辨识时,调整零极点的个数, 一般使用二阶震荡模型, 即 2 极点 0 零点.
 // TODO 调整编码器采样时间后, 记得修改速度公式里的脉冲读取时间
 
-// * 左后轮调好了, 速度注意为负 右后为正 右前为正 左前为正
+// * 左后轮调好了, 速度注意为正 右后为正 右前为正 左前为正
 // 之前震荡的原因是什么? 把 behavior 调整到 robust 一侧就好了
 
 // **************************** 变量定义 ****************************
@@ -17,11 +17,16 @@ static rt_sem_t encoder_fr_sem = RT_NULL; // 创建指向信号量的指针
 static rt_sem_t encoder_rl_sem = RT_NULL; // 创建指向信号量的指针
 static rt_sem_t encoder_rr_sem = RT_NULL; // 创建指向信号量的指针
 
-static int32 v_fl_expect = 0, v_fr_expect = 0, v_rl_expect = 0, v_rr_expect = 0;
+static int32 v_fl_expect = 50, v_fr_expect = 50, v_rl_expect = 50, v_rr_expect = 50;
 
 int32 encoder_fl_val = 0, encoder_fr_val = 0, encoder_rl_val = 0, encoder_rr_val = 0;
 
-uint8 pid_enabled = 1;
+uint8 pid_enabled = 0;
+
+extern double Angle;
+extern float imu_acc_x, imu_acc_y, imu_acc_z;
+
+// ! PID 默认关闭
 
 // **************************** 变量定义 ****************************
 
@@ -29,17 +34,19 @@ uint8 pid_enabled = 1;
 void devices_init();
 int create_main_dynamic_thread(void);
 void read_encoder_thread_entry(void *parameter);
+void read_GY_85_thread_entry(void *parameter);
 
 void PIDController_Init(PIDController *pid);
 void pid_motor_control_entry(void *parameter);
 float PIDController_weight_update(PIDController *pid, float setpoint, float measurement);
 
+// * 跟调试有关的函数
 int create_system_identification_thread(void);
 
 static void speed_set(int argc, char **argv);
 static void dir_set(int argc, char **argv);
 
-void minimum_pulse_counter_entry(void *parameter);
+void minimum_encoder_printer_entry(void *parameter);
 static void duty_set(int argc, char **argv);
 static void enable_pid(int argc, char **argv);
 
@@ -77,6 +84,10 @@ int main(void)
     EnableGlobalIRQ(0);
     while (1)
     {
+
+        // pwm_duty(RL_PWM, 5000);
+        // pwm_duty(RR_PWM, 5000);
+
         //此处编写需要循环执行的代码
         gpio_toggle(B9);
         rt_thread_mdelay(500);
@@ -108,6 +119,13 @@ void devices_init()
     pwm_init(RL_PWM, 50, 0);
     pwm_init(RR_PWM, 50, 0);
     // * -------------------------------- 电机初始化 --------------------------------
+
+    // * -------------------------------- GY-85初始化 --------------------------------
+    simiic_init();
+    Init_HMC5883L();
+    Init_ADXL345();
+    Init_ITG3205();
+    // * -------------------------------- GY-85初始化 --------------------------------
 }
 
 void read_encoder_thread_entry(void *parameter)
@@ -118,7 +136,7 @@ void read_encoder_thread_entry(void *parameter)
         //    int32 encoder_fl_val = 0, encoder_fr_val = 0, encoder_rl_val = 0, encoder_rr_val = 0;
 
         encoder_fl_val = qtimer_quad_get(QTIMER_1, QTIMER1_TIMER2_C2);
-        rt_sem_release(encoder_fl_sem);
+        rt_sem_release(encoder_fl_sem); // 告诉别的线程可以使用encoder_fl_val的值了
 
         encoder_fr_val = qtimer_quad_get(QTIMER_1, QTIMER1_TIMER0_C0);
         rt_sem_release(encoder_fr_sem);
@@ -143,6 +161,8 @@ int create_main_dynamic_thread(void)
     // 线程控制块指针
     rt_thread_t tid;
     // 创建动态线程
+
+    // * 编码器读取线程创建
     tid = rt_thread_create("read_encoder_thread",     // 线程名称
                            read_encoder_thread_entry, // 线程入口函数
                            RT_NULL,                   // 线程参数
@@ -159,10 +179,12 @@ int create_main_dynamic_thread(void)
     }
     else // 线程创建失败
     {
-        rt_kprintf("thread1: read_encoder_thread dynamic thread create ERROR.\n");
+        rt_kprintf("thread: read_encoder_thread dynamic thread create ERROR.\n");
         return 1;
     }
+    // * 编码器读取线程创建
 
+    // * PID控制线程创建
     tid = rt_thread_create("pid_motor_control_entry", // 线程名称
                            pid_motor_control_entry,   // 线程入口函数
                            RT_NULL,                   // 线程参数
@@ -178,9 +200,31 @@ int create_main_dynamic_thread(void)
     }
     else // 线程创建失败
     {
-        rt_kprintf("thread1: pid_motor_control_thread dynamic thread create ERROR.\n");
+        rt_kprintf("thread: pid_motor_control_thread dynamic thread create ERROR.\n");
         return 1;
     }
+    // * PID控制线程创建
+
+    // * 传感器读取线程创建
+    tid = rt_thread_create("read_GY_85_thread",     // 线程名称
+                           read_GY_85_thread_entry, // 线程入口函数
+                           RT_NULL,                 // 线程参数
+                           1024,                    // 1024 个字节的栈空间
+                           5,                       // 线程优先级为5，数值越小，优先级越高，0为最高优先级。
+                                                    // 可以通过修改rt_config.h中的RT_THREAD_PRIORITY_MAX宏定义(默认值为8)来修改最大支持的优先级
+                           5);                      // 时间片为5
+    rt_kprintf("create dynamic thread: read_GY_85_thread.\n");
+    if (tid != RT_NULL) // 线程创建成功
+    {
+        rt_kprintf("thread: read_GY_85_thread dynamic thread create OK.\n");
+        rt_thread_startup(tid); // 运行该线程
+    }
+    else // 线程创建失败
+    {
+        rt_kprintf("thread: read_GY_85_thread dynamic thread create ERROR.\n");
+        return 1;
+    }
+    // * 传感器读取线程创建
 
     return 0;
 }
@@ -211,7 +255,7 @@ void pid_motor_control_entry(void *parameter)
 
     while (1)
     {
-        result = rt_sem_take(encoder_fl_sem, RT_WAITING_FOREVER);
+        result = rt_sem_take(encoder_fl_sem, RT_WAITING_FOREVER); // 如果rt_sem_take返回RT_EOK,表明编码器的值可以使用了
         result = rt_sem_take(encoder_fr_sem, RT_WAITING_FOREVER);
         result = rt_sem_take(encoder_rl_sem, RT_WAITING_FOREVER);
         result = rt_sem_take(encoder_rr_sem, RT_WAITING_FOREVER);
@@ -263,7 +307,15 @@ void pid_motor_control_entry(void *parameter)
 
                 // * -------------------------------- 更新转速 -------------------------------- *//
             }
-
+            else
+            {
+                pwm_duty(FL_PWM, 0);
+                pwm_duty(FR_PWM, 0);
+                pwm_duty(RL_PWM, 0);
+                pwm_duty(RR_PWM, 0);
+            }
+            // 因为不能打印浮点数,所以把它乘100
+            // TODO open this
             rt_kprintf("%ld,%ld,%ld,%ld\n", (int32)(100 * v_fl), (int32)(100 * v_fr), (int32)(100 * v_rl), (int32)(100 * v_rr));
         }
     }
@@ -302,7 +354,7 @@ float PIDController_weight_update(PIDController *pid, float setpoint, float meas
 {
 
     float error = setpoint - measurement; // 误差
-    if (fabs(error) < 3)
+    if (fabs(error) < 0.1)                // 之前是3
         return pid->prev_out;
     float proportional = pid->Kp * error;                                                   // 比例项
     pid->integrator = pid->integrator + 0.5f * pid->Ki * pid->T * (error + pid->prevError); // 积分项
@@ -385,7 +437,6 @@ static void speed_set(int argc, char **argv)
 
 static void dir_set(int argc, char **argv)
 {
-
     if (argc < 2)
     {
         rt_kprintf("Invalid arguments!\n");
@@ -413,7 +464,7 @@ static void dir_set(int argc, char **argv)
     return;
 }
 
-void minimum_pulse_counter_entry(void *parameter)
+void minimum_encoder_printer_entry(void *parameter)
 {
     // !
     uint8 result = 1;
@@ -431,53 +482,52 @@ void minimum_pulse_counter_entry(void *parameter)
     }
 }
 
-int create_system_identification_thread(void)
+static void direction_control_m(int argc, char **argv) // m 是 manually 的意思
 {
-    // * 线程初始化函数
-    // 线程控制块指针
-    rt_thread_t tid;
-    // 创建动态线程
-    tid = rt_thread_create("minimum_pulse_counter",     // 线程名称
-                           minimum_pulse_counter_entry, // 线程入口函数
-                           RT_NULL,                     // 线程参数
-                           1024,                        // 1024 个字节的栈空间
-                           5,                           // 线程优先级为5，数值越小，优先级越高，0为最高优先级。
-                                                        // 可以通过修改rt_config.h中的RT_THREAD_PRIORITY_MAX宏定义(默认值为8)来修改最大支持的优先级
-                           5);                          // 时间片为5
-
-    rt_kprintf("create dynamic thread: minimum_pulse_counter.\n");
-    if (tid != RT_NULL) // 线程创建成功
+    if (argc < 2)
     {
-        rt_kprintf("thread: read_encoder_thread dynamic thread create OK.\n");
-        rt_thread_startup(tid); // 运行该线程
+        rt_kprintf("Invalid arguments!\n");
+        return;
     }
-    else // 线程创建失败
-    {
-        rt_kprintf("thread1: read_encoder_thread dynamic thread create ERROR.\n");
-        return 1;
-    }
+    direction_control(*argv[1], atoi(argv[2]));
+    PRINTF("Dir: %c, speed=%d\n", *argv[1], atoi(argv[2]));
+    return;
+}
 
-    tid = rt_thread_create("read_encoder_thread",     // 线程名称
-                           read_encoder_thread_entry, // 线程入口函数
-                           RT_NULL,                   // 线程参数
-                           1024,                      // 1024 个字节的栈空间
-                           5,                         // 线程优先级为5，数值越小，优先级越高，0为最高优先级。
-                                                      // 可以通过修改rt_config.h中的RT_THREAD_PRIORITY_MAX宏定义(默认值为8)来修改最大支持的优先级
-                           5);                        // 时间片为5
-
-    rt_kprintf("create dynamic thread: read_encoder_thread.\n");
-    if (tid != RT_NULL) // 线程创建成功
+void direction_control(char direction, float speed)
+{
+    // ! 未完成
+    uint8 dir = 0;
+    int8 fl, fr, rl, rr = 0;
+    if (direction == 'w')
+        dir = 1;
+    // else if (direction == "s")
+    //     dir = 2;
+    else if (direction == 'a')
+        dir = 3;
+    // else if (direction == "d")
+    //     dir = 4;
+    // 前后左右
+    switch (dir)
     {
-        rt_kprintf("thread: read_encoder_thread dynamic thread create OK.\n");
-        rt_thread_startup(tid); // 运行该线程
+    case 1:
+        fl = rl = -1;
+        fr = rr = 1;
+        break;
+    case 3:
+        rl = -1;
+        fr = 1;
+        fl = 1;
+        rr = -1;
+        break;
+    default:
+        break;
     }
-    else // 线程创建失败
-    {
-        rt_kprintf("thread1: read_encoder_thread dynamic thread create ERROR.\n");
-        return 1;
-    }
-
-    return 0;
+    v_fl_expect = speed * fl;
+    v_fr_expect = speed * fr;
+    v_rl_expect = speed * rl;
+    v_rr_expect = speed * rr;
+    return;
 }
 
 static void duty_set(int argc, char **argv)
@@ -532,50 +582,13 @@ static void enable_pid(int argc, char **argv)
     return;
 }
 
-void direction_control(char direction, float speed)
+void read_GY_85_thread_entry(void *parameter)
 {
-    // ! 未完成
-    uint8 dir = 0;
-    int8 fl, fr, rl, rr = 0;
-    if (direction == 'w')
-        dir = 1;
-    // else if (direction == "s")
-    //     dir = 2;
-    else if (direction == 'a')
-        dir = 3;
-    // else if (direction == "d")
-    //     dir = 4;
-    // 前后左右
-    switch (dir)
+    while (1)
     {
-    case 1:
-        fl = rl = -1;
-        fr = rr = 1;
-        break;
-    case 3:
-        rl = -1;
-        fr = 1;
-        fl = 1;
-        rr = -1;
-        break;
-    default:
-        break;
+        Angle_get();
+        // rt_kprintf("%ld\n", (int32)(Angle * 100));
+        // rt_kprintf("%ld,%ld,%ld\n", (int32)(100 * imu_acc_x), (int32)(100 * imu_acc_y), (int32)(100 * imu_acc_z));
+        rt_thread_mdelay(2);
     }
-    v_fl_expect = speed * fl;
-    v_fr_expect = speed * fr;
-    v_rl_expect = speed * rl;
-    v_rr_expect = speed * rr;
-    return;
-}
-
-static void direction_control_m(int argc, char **argv)
-{
-    if (argc < 2)
-    {
-        rt_kprintf("Invalid arguments!\n");
-        return;
-    }
-    direction_control(*argv[1], atoi(argv[2]));
-    PRINTF("Dir: %c, speed=%d\n", *argv[1], atoi(argv[2]));
-    return;
 }

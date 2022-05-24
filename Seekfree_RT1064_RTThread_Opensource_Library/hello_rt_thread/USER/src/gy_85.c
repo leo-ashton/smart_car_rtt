@@ -6,6 +6,9 @@
 unsigned char BUF[6];
 INT16_XYZ A_value, H_value, T_value;
 INT16_XYZ T_offset;
+double Angle;
+float imu_acc_x = 0, imu_acc_y = 0, imu_acc_z = 0;
+
 //*******ADXL345*********************************
 void read_ADXL345(void)
 {
@@ -14,9 +17,9 @@ void read_ADXL345(void)
 	A_value.X = (BUF[1] << 8) + BUF[0]; //合成数据
 	A_value.Y = (BUF[3] << 8) + BUF[2]; //合成数据
 	A_value.Z = (BUF[5] << 8) + BUF[4]; //合成数据
-	//	*imu_acc_x = A_value.X*0.004*SENSORS_GRAVITY_EARTH;
-	//	*imu_acc_y = A_value.Y*0.004*SENSORS_GRAVITY_EARTH;
-	//	*imu_acc_z = A_value.Z*0.004*SENSORS_GRAVITY_EARTH;
+	imu_acc_x = A_value.X * 0.004 * SENSORS_GRAVITY_EARTH;
+	imu_acc_y = A_value.Y * 0.004 * SENSORS_GRAVITY_EARTH;
+	imu_acc_z = A_value.Z * 0.004 * SENSORS_GRAVITY_EARTH;
 }
 
 void Init_ADXL345(void)
@@ -101,7 +104,7 @@ uint8_t ITG3205_OffSet(INT16_XYZ value, INT16_XYZ *offset, uint16_t sensivity)
 	}
 	tempgx += value.X;
 	tempgy += value.Y;
-	tempgz += value.Z - sensivity; // 加速度计校准 sensivity 等于 MPU9250初始化时设置的灵敏度值（8196LSB/g）;陀螺仪校准 sensivity = 0；
+	tempgz += value.Z - sensivity; //加速度计校准 sensivity 等于 MPU9250初始化时设置的灵敏度值（8196LSB/g）;陀螺仪校准 sensivity = 0；
 	if (cnt_a == 200)			   // 200个数值求平均
 	{
 		offset->X = tempgx / cnt_a;
@@ -114,7 +117,7 @@ uint8_t ITG3205_OffSet(INT16_XYZ value, INT16_XYZ *offset, uint16_t sensivity)
 	return 0;
 }
 
-// ****进行去零漂处理*************
+//****进行去零漂处理*************
 void ITG3205_Offset_Calc(void)
 {
 	int8 flag; //校准采样是否完成
@@ -127,19 +130,18 @@ void ITG3205_Offset_Calc(void)
 	return;
 }
 
-/*** 以下函数放于定时器中2ms执行一次 ***/
+/***以下函数放于定时器中2ms执行一次***/
 void Angle_get(void)
 {
-	static int angle_count = 0; // 刚开始，单独使用加速度标志
-	double angle_ratio = 0;		// 加速度比值
+	static int angle_count = 0; //刚开始，单独使用加速度标志
+	double angle_ratio = 0;		//加速度比值
 	static float Pitch = 0;
 	static float Angle_acc_last;
-	/******* (滤波过程略) */
-	double Angle;
-	float dt = 0.0001249; // Gy 2ms时间积分系数
+	/*******（滤波过程略)*/
+	float dt = 0.002; // Gy 2ms时间积分系数
 	double Angle_acc;
 	//		Anglefiltering();//入口滤波，算数平均
-	/*** 以下为刚开始时的加速度角度单独处理 ***/
+	/***以下为刚开始时的加速度角度单独处理***/
 	Angle_acc_last = Angle_acc;
 	read_ADXL345();
 	angle_ratio = ((double)A_value.X) / (A_value.Z + 0.1);

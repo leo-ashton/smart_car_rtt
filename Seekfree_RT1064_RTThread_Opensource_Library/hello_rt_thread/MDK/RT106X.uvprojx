@@ -1789,6 +1789,11 @@
               <FileType>1</FileType>
               <FilePath>..\USER\src\gy_85.c</FilePath>
             </File>
+            <File>
+              <FileName>user_debug.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\USER\src\user_debug.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>
@@ -1818,6 +1823,11 @@
               <FileName>gy_85.h</FileName>
               <FileType>5</FileType>
               <FilePath>..\USER\inc\gy_85.h</FilePath>
+            </File>
+            <File>
+              <FileName>user_debug.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\USER\inc\user_debug.h</FilePath>
             </File>
           </Files>
         </Group>
@@ -4000,6 +4010,11 @@
               <FileType>1</FileType>
               <FilePath>..\USER\src\gy_85.c</FilePath>
             </File>
+            <File>
+              <FileName>user_debug.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\USER\src\user_debug.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>
@@ -4029,6 +4044,11 @@
               <FileName>gy_85.h</FileName>
               <FileType>5</FileType>
               <FilePath>..\USER\inc\gy_85.h</FilePath>
+            </File>
+            <File>
+              <FileName>user_debug.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\USER\inc\user_debug.h</FilePath>
             </File>
           </Files>
         </Group>
