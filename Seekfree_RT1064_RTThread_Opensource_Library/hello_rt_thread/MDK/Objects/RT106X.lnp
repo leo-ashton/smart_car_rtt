@@ -130,6 +130,7 @@
 ".\objects\isr.o"
 ".\objects\main.o"
 ".\objects\deprecated.o"
+".\objects\gy_85.o"
 ".\objects\fsl_assert.o"
 ".\objects\fsl_debug_console.o"
 ".\objects\fsl_str.o"

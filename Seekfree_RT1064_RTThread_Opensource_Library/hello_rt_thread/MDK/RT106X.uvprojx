@@ -1784,6 +1784,11 @@
               <FileType>1</FileType>
               <FilePath>.\deprecated.c</FilePath>
             </File>
+            <File>
+              <FileName>gy_85.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\USER\src\gy_85.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>
@@ -1808,6 +1813,11 @@
               <FileName>rtconfig.h</FileName>
               <FileType>5</FileType>
               <FilePath>..\..\Libraries\rttherad_libraries\bsp\rtconfig.h</FilePath>
+            </File>
+            <File>
+              <FileName>gy_85.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\USER\inc\gy_85.h</FilePath>
             </File>
           </Files>
         </Group>
@@ -3985,6 +3995,11 @@
               <FileType>1</FileType>
               <FilePath>.\deprecated.c</FilePath>
             </File>
+            <File>
+              <FileName>gy_85.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\USER\src\gy_85.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>
@@ -4009,6 +4024,11 @@
               <FileName>rtconfig.h</FileName>
               <FileType>5</FileType>
               <FilePath>..\..\Libraries\rttherad_libraries\bsp\rtconfig.h</FilePath>
+            </File>
+            <File>
+              <FileName>gy_85.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\USER\inc\gy_85.h</FilePath>
             </File>
           </Files>
         </Group>

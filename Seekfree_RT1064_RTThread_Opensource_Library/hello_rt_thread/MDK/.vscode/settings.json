@@ -1,6 +1,7 @@
 {
     "files.associations": {
         "math.h": "c",
-        "RTTHREAD.H": "cpp"
+        "RTTHREAD.H": "cpp",
+        "headfile.h": "c"
     }
 }
