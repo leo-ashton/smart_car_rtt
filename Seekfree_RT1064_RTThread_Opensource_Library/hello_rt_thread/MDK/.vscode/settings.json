@@ -3,6 +3,12 @@
         "math.h": "c",
         "RTTHREAD.H": "cpp",
         "headfile.h": "c",
-        "seekfree_iic.h": "c"
+        "seekfree_iic.h": "c",
+        "get_tsp_sol_by_aco.h": "c",
+        "get_tsp_sol_by_aco_types.h": "c",
+        "seekfree_w25qxxjv.h": "c",
+        "arm_math.h": "c",
+        "rand.h": "c",
+        "zf_systick.h": "c"
     }
 }

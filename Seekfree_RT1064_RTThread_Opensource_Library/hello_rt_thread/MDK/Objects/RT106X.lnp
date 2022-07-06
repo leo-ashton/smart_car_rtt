@@ -173,6 +173,16 @@
 ".\objects\msh_file.o"
 ".\objects\shell.o"
 ".\objects\symbol.o"
+".\objects\eml_rand_mt19937ar_stateful.o"
+".\objects\get_tsp_sol_by_aco.o"
+".\objects\get_tsp_sol_by_aco_data.o"
+".\objects\get_tsp_sol_by_aco_initialize.o"
+".\objects\get_tsp_sol_by_aco_terminate.o"
+".\objects\rand.o"
+".\objects\rt_nonfinite.o"
+".\objects\rtgetinf.o"
+".\objects\rtgetnan.o"
+"..\..\Libraries\nxp_libraries\CMSIS\Include\arm_cortexM7lfdp_math.lib"
 --library_type=microlib --diag_suppress 6314,6329 --strict --scatter ".\scf\MIMXRT1064xxxxx_flexspi_nor.scf"
 --summary_stderr --info summarysizes --map --load_addr_map_info --xref --callgraph --symbols
 --info sizes --info totals --info unused --info veneers
