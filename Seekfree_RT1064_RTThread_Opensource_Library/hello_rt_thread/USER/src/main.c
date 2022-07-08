@@ -4,14 +4,19 @@
 #include "user_debug.h"
 #include <rtthread.h>
 
+// * -------------------------------- 分割线 -------------------------------- *//
+
 // * 对电机系统辨识时,调整零极点的个数, 一般使用二阶震荡模型, 即 2 极点 0 零点.
 // TODO 调整编码器采样时间后, 记得修改速度公式里的脉冲读取时间
-
+// * RT_TICK_PER_SECOND = 1000，于是 1 OSTick = 1 ms
 // * 左后轮调好了, 速度注意为正 右后为正 右前为正 左前为正
 // 之前震荡的原因是什么? 把 behavior 调整到 robust 一侧就好了
 
-// **************************** 变量定义 ****************************
+// * -------------------------------- 需要在串口打印的数据 -------------------------------- *//
+#define PRINT_SPEED_ENABLED 0
+// * -------------------------------- 需要在串口打印的数据 -------------------------------- *//
 
+// **************************** 变量定义 ****************************
 static rt_sem_t encoder_fl_sem = RT_NULL; // 创建指向信号量的指针
 static rt_sem_t encoder_fr_sem = RT_NULL; // 创建指向信号量的指针
 static rt_sem_t encoder_rl_sem = RT_NULL; // 创建指向信号量的指针
@@ -24,17 +29,26 @@ int32 encoder_fl_val = 0, encoder_fr_val = 0, encoder_rl_val = 0, encoder_rr_val
 uint8 pid_enabled = 0;
 
 extern double Angle;
+extern float_XYZ Dis;
 extern float imu_acc_x, imu_acc_y, imu_acc_z;
+extern float_XYZ V_value, A_value, Dis;
+extern float A_average_x1, A_average_x2;
+extern int count_flag;
+extern float V_value_x_last;
+extern float ax, ay;
+extern int flag;
 
 // ! PID 默认关闭
-
 // **************************** 变量定义 ****************************
 
 // **************************** 函数定义 ****************************
 void devices_init();
 int create_main_dynamic_thread(void);
+int create_main_timer(void);
 void read_encoder_thread_entry(void *parameter);
 void read_GY_85_thread_entry(void *parameter);
+void readV__D(void *parameter);
+static void readV__D_for_timer(void *parameter);
 
 void PIDController_Init(PIDController *pid);
 void pid_motor_control_entry(void *parameter);
@@ -52,7 +66,6 @@ static void enable_pid(int argc, char **argv);
 
 void direction_control(char direction, float speed);
 static void direction_control_m(int argc, char **argv);
-
 // **************************** 函数定义 ****************************
 
 // **************************** msh 初始化 ****************************
@@ -81,16 +94,18 @@ int main(void)
     // create_system_identification_thread();
     // * --------------------------------线程初始化--------------------------------
 
+    // * -------------------------------- 软件定时器初始化 -------------------------------- *//
+    create_main_timer();
+    // * -------------------------------- 软件定时器初始化 -------------------------------- *//
+
     EnableGlobalIRQ(0);
     while (1)
     {
-
-        // pwm_duty(RL_PWM, 5000);
-        // pwm_duty(RR_PWM, 5000);
-
         //此处编写需要循环执行的代码
         gpio_toggle(B9);
-        rt_thread_mdelay(500);
+        rt_kprintf("%ld,%ld,%ld,%ld\n", (int32)(imu_acc_x * 100), (int32)(V_value.X * 100), (int32)(Dis.X * 100), (int32)(flag * 100));
+
+        rt_thread_mdelay(10);
     }
 }
 
@@ -133,7 +148,6 @@ void read_encoder_thread_entry(void *parameter)
     while (1)
     {
         //读取编码器计数值
-        //    int32 encoder_fl_val = 0, encoder_fr_val = 0, encoder_rl_val = 0, encoder_rr_val = 0;
 
         encoder_fl_val = qtimer_quad_get(QTIMER_1, QTIMER1_TIMER2_C2);
         rt_sem_release(encoder_fl_sem); // 告诉别的线程可以使用encoder_fl_val的值了
@@ -233,10 +247,11 @@ void pid_motor_control_entry(void *parameter)
 {
 
     // 读取并打印编码器的值
+
     static rt_err_t result;
     float v_fl, v_fr, v_rl, v_rr = 0; // ! 均为测量值
+
     float revised_fl_duty, revised_fr_duty, revised_rl_duty, revised_rr_duty = 0;
-    // revised_fl_duty = revised_fr_duty = revised_rl_duty = revised_rr_duty = 0;
     uint8 dir_fl, dir_fr, dir_rl, dir_rr = 0;
     int32 revised_rl_duty_int = 0;
 
@@ -262,11 +277,6 @@ void pid_motor_control_entry(void *parameter)
         if (result == RT_EOK) // 获取编码器信号量成功
         {
             // * -------------------------------- 更新当前速度 -------------------------------- *//
-            // v_fl = ((encoder_fl_val / encoder_line_count) * encoder_gear_count / wheel_gear_count) * wheel_week_length * 20;
-            // v_fr = ((encoder_fr_val / encoder_line_count) * encoder_gear_count / wheel_gear_count) * wheel_week_length * 20;
-            // v_rl = ((encoder_rl_val / encoder_line_count) * encoder_gear_count / wheel_gear_count) * wheel_week_length * 20;
-            // v_rr = ((encoder_rr_val / encoder_line_count) * encoder_gear_count / wheel_gear_count) * wheel_week_length * 20;
-
             v_fl = ((encoder_fl_val / encoder_line_count) * encoder_gear_count / wheel_gear_count) * wheel_week_length * 20;
             v_fr = ((encoder_fr_val / encoder_line_count) * encoder_gear_count / wheel_gear_count) * wheel_week_length * 20;
             v_rl = ((encoder_rl_val / encoder_line_count) * encoder_gear_count / wheel_gear_count) * wheel_week_length * 20;
@@ -284,7 +294,6 @@ void pid_motor_control_entry(void *parameter)
                 revised_rr_duty = PIDController_weight_update(&rr_pid_controller, v_rr_expect, v_rr);
 
                 // * -------------------------------- 更新转向 -------------------------------- *//
-
                 dir_fl = (revised_fl_duty > 0 ? 0 : 1);
                 dir_fr = (revised_fr_duty > 0 ? 0 : 1);
                 dir_rl = (revised_rl_duty > 0 ? 1 : 0);
@@ -294,17 +303,13 @@ void pid_motor_control_entry(void *parameter)
                 gpio_set(FR_DIR, dir_fr);
                 gpio_set(RL_DIR, dir_rl);
                 gpio_set(RR_DIR, dir_rr);
-
-                // rt_kprintf("dir_fl=%d\n", dir_fl);
                 // * -------------------------------- 更新转向 -------------------------------- *//
 
                 // * -------------------------------- 更新转速 -------------------------------- *//
-
                 pwm_duty(FL_PWM, fabs(revised_fl_duty));
                 pwm_duty(FR_PWM, fabs(revised_fr_duty));
                 pwm_duty(RL_PWM, fabs(revised_rl_duty));
                 pwm_duty(RR_PWM, fabs(revised_rr_duty));
-
                 // * -------------------------------- 更新转速 -------------------------------- *//
             }
             else
@@ -316,7 +321,8 @@ void pid_motor_control_entry(void *parameter)
             }
             // 因为不能打印浮点数,所以把它乘100
             // TODO open this
-            rt_kprintf("%ld,%ld,%ld,%ld\n", (int32)(100 * v_fl), (int32)(100 * v_fr), (int32)(100 * v_rl), (int32)(100 * v_rr));
+            if (PRINT_SPEED_ENABLED)
+                rt_kprintf("%ld,%ld,%ld,%ld\n", (int32)(100 * v_fl), (int32)(100 * v_fr), (int32)(100 * v_rl), (int32)(100 * v_rr));
         }
     }
 }
@@ -591,4 +597,37 @@ void read_GY_85_thread_entry(void *parameter)
         // rt_kprintf("%ld,%ld,%ld\n", (int32)(100 * imu_acc_x), (int32)(100 * imu_acc_y), (int32)(100 * imu_acc_z));
         rt_thread_mdelay(2);
     }
+}
+
+void readV__D(void *parameter)
+{
+    while (1)
+    {
+        V_get();
+        Dis_get();
+        rt_kprintf("%ld,%ld,%ld,%ld\n", (int32)(imu_acc_x * 100), (int32)(V_value.X * 100), (int32)(Dis.X * 100), (int32)(flag * 100));
+        rt_thread_mdelay(2);
+    }
+}
+
+static void readV__D_for_timer(void *parameter)
+{
+    V_get();
+    Dis_get();
+    // rt_kprintf("%ld,%ld,%ld,%ld\n", (int32)(imu_acc_x * 100), (int32)(V_value.X * 100), (int32)(Dis.X * 100), (int32)(flag * 100));
+}
+
+int create_main_timer(void)
+{
+    static rt_timer_t read_velocity_timer;
+    read_velocity_timer = rt_timer_create("read_velocity_timer", readV__D_for_timer,
+                                          RT_NULL, 20,
+                                          RT_TIMER_FLAG_PERIODIC);
+    // ! Dis_get 中的dt未更改
+    if (read_velocity_timer != RT_NULL)
+    {
+        rt_timer_start(read_velocity_timer);
+        rt_kprintf("read_velocity_timer start successful!\n");
+    }
+    return 0;
 }

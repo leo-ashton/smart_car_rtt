@@ -2,13 +2,33 @@
 #include "zf_systick.h"
 #include "SEEKFREE_IIC.h"
 #include "gy_85.h"
+// #include "kalman.h"
+#include "math.h"
+#include "assert.h"
 
 unsigned char BUF[6];
-INT16_XYZ A_value, H_value, T_value;
+INT16_XYZ A_value, H_value, T_value; // 读到的三个传感器的值，存放计算得到坐标
 INT16_XYZ T_offset;
 double Angle;
+float_XYZ Dis, V_value;
 float imu_acc_x = 0, imu_acc_y = 0, imu_acc_z = 0;
-
+float imu_acc_x_last = 0, imu_acc_y_last = 0;																	  //记录上一次
+float imu_acc_x_first[110] = {0}, imu_acc_y_first[110] = {0}, imu_acc_x_2nd[150] = {0}, imu_acc_y_2nd[150] = {0}; //
+float A_average_x1 = 0, A_average_y1 = 0, A_average_x2 = 0, A_average_y2 = 0;
+int count_flag = 0;
+float V_value_x_last = 0, V_value_y_last = 0;
+float ax = 0, ay = 0;
+int jiaozheng = 0;
+int flag = 0;
+//卡尔曼滤波设初值
+KFP KFP_imu_acc_x = {0.02, 0, 0, 0, 0.001, 0.6};
+KFP KFP_imu_acc_x2 = {0.02, 0, 0, 0, 0.01, 0.6};
+KFP KFP_imu_acc_y2 = {0.02, 0, 0, 0, 0.01, 0.6};
+KFP KFP_imu_acc_y = {0.02, 0, 0, 0, 0.001, 0.6};
+KFP KFP_V_value_x = {0.02, 0, 0, 0, 0.001, 0.6};
+KFP KFP_V_value_y = {0.02, 0, 0, 0, 0.001, 0.6};
+KFP KFP_D_value_x = {0.02, 0, 0, 0, 0.001, 0.6};
+KFP KFP_D_value_y = {0.02, 0, 0, 0, 0.001, 0.6};
 //*******ADXL345*********************************
 void read_ADXL345(void)
 {
@@ -20,6 +40,8 @@ void read_ADXL345(void)
 	imu_acc_x = A_value.X * 0.004 * SENSORS_GRAVITY_EARTH;
 	imu_acc_y = A_value.Y * 0.004 * SENSORS_GRAVITY_EARTH;
 	imu_acc_z = A_value.Z * 0.004 * SENSORS_GRAVITY_EARTH;
+	imu_acc_x = kalmanFilter(&KFP_imu_acc_x, imu_acc_x);
+	imu_acc_y = kalmanFilter(&KFP_imu_acc_y, imu_acc_y);
 }
 
 void Init_ADXL345(void)
@@ -130,13 +152,15 @@ void ITG3205_Offset_Calc(void)
 	return;
 }
 
-/***以下函数放于定时器中2ms执行一次***/
+/***以下函数放于定时器中2ms执行一次，***/ // A 加速度（得到三个轴上加速度的大小（重力加速度））   H 地磁场加速度（得到磁场在x和y轴上的大小，可以得到当前小车的转向，需要先转一圈进行读数，然后再读表）   ITG陀螺仪（得到三个轴的角加速度）
 void Angle_get(void)
 {
 	static int angle_count = 0; //刚开始，单独使用加速度标志
 	double angle_ratio = 0;		//加速度比值
 	static float Pitch = 0;
 	static float Angle_acc_last;
+	static float T_value_last = 0;
+	static float A_count = 1;
 	/*******（滤波过程略)*/
 	float dt = 0.002; // Gy 2ms时间积分系数
 	double Angle_acc;
@@ -146,8 +170,7 @@ void Angle_get(void)
 	read_ADXL345();
 	angle_ratio = ((double)A_value.X) / (A_value.Z + 0.1);
 	Angle_acc = (float)atan(angle_ratio) * 57.29578049; //加速度计得到的角
-
-	if (angle_count == 0) //低通限幅滤波
+	if (angle_count == 0)								//低通限幅滤波，第一次运行程序
 	{
 		Angle_acc_last = Angle_acc;
 	}
@@ -158,10 +181,15 @@ void Angle_get(void)
 		Angle_acc = -89;
 	/***陀螺仪角度读取，对Z轴角速度进行积分*******************************/
 	read_ITG3205();
+	if (A_count)
+	{
+		T_value_last = T_value.Z;
+		A_count = 0;
+	}
 	T_value.Z -= T_offset.Z;
 	T_value.Z = T_value.Z / 14.375; //换算
-	Pitch += T_value.Z * dt;
-
+	Pitch += T_value.Z * dt - fabs(T_value.Z - T_value_last) / 2 * dt;
+	T_value_last = T_value.Z;
 	if (angle_count < 300) //刚开始运行的0.6s时，取加速度轴得到的角度
 	{
 		Angle = Angle_acc; //加速度得到的角度
@@ -171,4 +199,137 @@ void Angle_get(void)
 	{
 		Angle = Pitch; //融合后的结果
 	}
+}
+//
+void init_Dis(void)
+{
+	V_value.X = V_value.Y = 0;
+	Dis.X = Dis.Y = 0;
+}
+
+float kalmanFilter(KFP *kfp, float input)
+{
+	//预测协方差方程：k时刻系统估算协方差 = k-1时刻的系统协方差 + 过程噪声协方差
+	kfp->Now_P = kfp->LastP + kfp->Q;
+	//卡尔曼增益方程：卡尔曼增益 = k时刻系统估算协方差 / （k时刻系统估算协方差 + 观测噪声协方差）
+	kfp->Kg = kfp->Now_P / (kfp->Now_P + kfp->R);
+	//更新最优值方程：k时刻状态变量的最优值 = 状态变量的预测值 + 卡尔曼增益 * （测量值 - 状态变量的预测值）
+	kfp->out = kfp->out + kfp->Kg * (input - kfp->out); //因为这一次的预测值就是上一次的输出值
+	//更新协方差方程: 本次的系统协方差付给 kfp->LastP 威下一次运算准备。
+	kfp->LastP = (1 - kfp->Kg) * kfp->Now_P;
+	return kfp->out;
+}
+
+float aver110(float a[110])
+{
+	int i;
+	float av, s = a[110];
+	for (i = 1; i < 110; i++)
+		s = s + a[i];
+	av = s / 110;
+	return av;
+}
+
+float aver150(float a[150])
+{
+	int i;
+	float av, s = a[150];
+	for (i = 1; i < 150; i++)
+		s = s + a[i];
+	av = s / 150;
+	return av;
+}
+
+void V_get(void)
+{
+	float dt1 = 0.01;
+	static int i = 0, A_sum_x = 0;
+
+	read_ADXL345();
+	// imu_acc_x=kalmanFilter(&KFP_imu_acc_x2,imu_acc_x);
+	// imu_acc_y=kalmanFilter(&KFP_imu_acc_y2,imu_acc_y);
+	if (count_flag < 150 && count_flag > 39) //记录第40次到150次的值，第一次修正
+	{
+		imu_acc_x_first[count_flag - 40] = imu_acc_x;
+		imu_acc_y_first[count_flag - 40] = imu_acc_y;
+		count_flag += 1;
+	}
+	else if (count_flag == 150)
+	{
+		// 求平均
+		A_average_x1 = aver110(imu_acc_x_first);
+		A_average_y1 = aver110(imu_acc_y_first);
+		count_flag += 1;
+	}
+	else if (count_flag < 301) // 第二次修正,151到301次
+	{
+		//再读取第一次修正后的值，进行第二次修正
+		imu_acc_x -= A_average_x1;
+		imu_acc_y -= A_average_y1;
+		imu_acc_x_2nd[count_flag - 151] = imu_acc_x;
+		imu_acc_y_2nd[count_flag - 151] = imu_acc_y;
+		count_flag += 1;
+	}
+	else if (count_flag == 301)
+	{
+		//再计算平均值，第二次的平均值
+		A_average_x2 = aver150(imu_acc_x_2nd);
+		A_average_y2 = aver150(imu_acc_y_2nd);
+		count_flag += 1;
+	}
+	else // 两次校正之后运行
+	{
+		imu_acc_x = imu_acc_x - A_average_x1 - A_average_x2;
+		imu_acc_y = imu_acc_y - A_average_y1 - A_average_y2;
+
+		if (fabs(imu_acc_x) <= 0.2) // 认为加速度为零
+		{
+			V_value.X += 0; // 得到速度，一阶积分
+			imu_acc_x_last = 0;
+			// V_value.X=kalmanFilter(&KFP_V_value_x,V_value.X);
+			//		V_value.Y+=0*dt1-fabs(0-imu_acc_y_last)/2*dt1;// 得到速度，一阶积分
+			//		imu_acc_y_last=0;
+			//		V_value.Y=kalmanFilter(&KFP_V_value_y,V_value.Y);
+		}
+		else
+		{
+			V_value.X = V_value.X + imu_acc_x * dt1 - fabs(imu_acc_x - imu_acc_x_last) / 2 * dt1; // 得到速度，一阶积分
+			imu_acc_x_last = imu_acc_x;
+			V_value.X = kalmanFilter(&KFP_V_value_x, V_value.X);
+			V_value.Y = V_value.Y + imu_acc_y * dt1 - fabs(imu_acc_y - imu_acc_y_last) / 2 * dt1; // 得到速度，一阶积分
+			imu_acc_y_last = imu_acc_y;
+			V_value.Y = kalmanFilter(&KFP_V_value_y, V_value.Y);
+		}
+		jiaozheng = jiaozheng + 1;
+		flag = 0;
+
+		if (jiaozheng == 500) // 强制为零
+		{
+			jiaozheng = 0;
+
+			if (fabs(imu_acc_x) <= 0.2)
+			{
+				V_value.X = 0;
+				imu_acc_x_last = 0;
+				flag = 1;
+				// assert(0);
+			}
+			if (fabs(imu_acc_y) <= 0.1)
+			{
+				V_value.Y = 0;
+				imu_acc_y_last = 0;
+			}
+		}
+	}
+}
+
+void Dis_get(void)
+{
+	static float dt2 = 0.05;
+	Dis.X += V_value.X * dt2 - (V_value.X - V_value_x_last) * dt2;
+	V_value_x_last = V_value.X;
+	Dis.Y += V_value.Y * dt2 - (V_value.Y - V_value_y_last) * dt2;
+	V_value_y_last = V_value.Y;
+	Dis.X = kalmanFilter(&KFP_D_value_x, Dis.X);
+	Dis.Y = kalmanFilter(&KFP_D_value_y, Dis.Y);
 }

@@ -45,7 +45,6 @@
                 "d:\\OneDriveStu\\SmartVision\\Code\\RT1064_RTThread_Library\\Seekfree_RT1064_RTThread_Opensource_Library\\Libraries\\rttherad_libraries\\include\\libc",
                 "d:\\OneDriveStu\\SmartVision\\Code\\RT1064_RTThread_Library\\Seekfree_RT1064_RTThread_Opensource_Library\\Libraries\\rttherad_libraries\\libcpu\\arm\\cortex-m7",
                 "d:\\OneDriveStu\\SmartVision\\Code\\RT1064_RTThread_Library\\Seekfree_RT1064_RTThread_Opensource_Library\\Libraries\\rttherad_libraries\\components\\finsh",
-                "D:\\Users\\amluo\\OneDrive - stu.cn\\OneDrive - stu.cqupt.edu.cn\\SmartVision\\Code\\RT1064_RTThread_Library\\Seekfree_RT1064_RTThread_Opensource_Library\\hello_rt_thread\\USER\\matlab_coder\\aco_tsp",
                 "D:\\Users\\amluo\\OneDrive - stu.cn\\OneDrive - stu.cqupt.edu.cn\\SmartVision\\Code\\RT1064_RTThread_Library\\Seekfree_RT1064_RTThread_Opensource_Library\\Libraries\\nxp_libraries\\CMSIS\\Include"
             ],
             "defines": [
@@ -185,7 +184,6 @@
                 "d:\\OneDriveStu\\SmartVision\\Code\\RT1064_RTThread_Library\\Seekfree_RT1064_RTThread_Opensource_Library\\hello_rt_thread\\MDK",
                 "d:\\OneDriveStu\\SmartVision\\Code\\RT1064_RTThread_Library\\Seekfree_RT1064_RTThread_Opensource_Library\\Libraries\\rttherad_libraries\\src",
                 "d:\\OneDriveStu\\SmartVision\\Code\\RT1064_RTThread_Library\\Seekfree_RT1064_RTThread_Opensource_Library\\Libraries\\rttherad_libraries\\libcpu\\arm\\cortex-m7",
-                "D:\\Users\\amluo\\OneDrive - stu.cn\\OneDrive - stu.cqupt.edu.cn\\SmartVision\\Code\\RT1064_RTThread_Library\\Seekfree_RT1064_RTThread_Opensource_Library\\hello_rt_thread\\USER\\matlab_coder\\aco_tsp",
                 "D:\\Users\\amluo\\OneDrive - stu.cn\\OneDrive - stu.cqupt.edu.cn\\SmartVision\\Code\\RT1064_RTThread_Library\\Seekfree_RT1064_RTThread_Opensource_Library\\Libraries\\nxp_libraries\\CMSIS\\Include"
             ],
             "defines": [
