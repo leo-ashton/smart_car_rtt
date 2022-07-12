@@ -173,7 +173,11 @@
 ".\objects\msh_file.o"
 ".\objects\shell.o"
 ".\objects\symbol.o"
-"..\..\Libraries\nxp_libraries\CMSIS\Include\arm_cortexM7lfdp_math.lib"
+"D:\Users\amluo\OneDrive - stu.cn\OneDrive - stu.cqupt.edu.cn\SmartVision\Code\RT1064_RTThread_Library\Seekfree_RT1064_RTThread_Opensource_Library\Libraries\nxp_libraries\CMSIS\Include\arm_cortexM7lfdp_math.lib"
+".\objects\get_transform_matrix.o"
+".\objects\rt_nonfinite.o"
+".\objects\rtgetinf.o"
+".\objects\rtgetnan.o"
 --library_type=microlib --diag_suppress 6314,6329 --strict --scatter ".\scf\MIMXRT1064xxxxx_flexspi_nor.scf"
 --summary_stderr --info summarysizes --map --load_addr_map_info --xref --callgraph --symbols
 --info sizes --info totals --info unused --info veneers

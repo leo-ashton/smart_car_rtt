@@ -58,6 +58,7 @@ void Init_ITG3205(void);
 void read_ITG3205(void);
 void Dis_get(void);
 void V_get(void);
+void V2_get();
 // float kalmanFilter(float in_Data, int i);
 float kalmanFilter(KFP *kfp, float input);
 void ITG3205_Offset_Calc(void);

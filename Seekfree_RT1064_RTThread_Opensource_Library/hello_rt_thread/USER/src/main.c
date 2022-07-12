@@ -3,6 +3,7 @@
 #include "gy_85.h"
 #include "user_debug.h"
 #include <rtthread.h>
+#include "arm_math.h"
 
 // * -------------------------------- 分割线 -------------------------------- *//
 
@@ -13,8 +14,13 @@
 // 之前震荡的原因是什么? 把 behavior 调整到 robust 一侧就好了
 
 // * -------------------------------- 需要在串口打印的数据 -------------------------------- *//
-#define PRINT_SPEED_ENABLED 0
+uint8 PRINT_SPEED_ENABLED = 0;
+uint8 PRINT_ACC_ENABLED = 1;
 // * -------------------------------- 需要在串口打印的数据 -------------------------------- *//
+
+// * -------------------------------- 一些设置 -------------------------------- *//
+
+// * -------------------------------- 一些设置 -------------------------------- *//
 
 // **************************** 变量定义 ****************************
 static rt_sem_t encoder_fl_sem = RT_NULL; // 创建指向信号量的指针
@@ -25,11 +31,12 @@ static rt_sem_t encoder_rr_sem = RT_NULL; // 创建指向信号量的指针
 static int32 v_fl_expect = 50, v_fr_expect = 50, v_rl_expect = 50, v_rr_expect = 50;
 
 int32 encoder_fl_val = 0, encoder_fr_val = 0, encoder_rl_val = 0, encoder_rr_val = 0;
+float v_fl, v_fr, v_rl, v_rr = 0; // ! 均为测量值
 
 uint8 pid_enabled = 0;
 
 extern double Angle;
-extern float_XYZ Dis;
+extern float_XYZ Dis, Dis2;
 extern float imu_acc_x, imu_acc_y, imu_acc_z;
 extern float_XYZ V_value, A_value, Dis;
 extern float A_average_x1, A_average_x2;
@@ -37,6 +44,7 @@ extern int count_flag;
 extern float V_value_x_last;
 extern float ax, ay;
 extern int flag;
+// extern float v_fl_filtered,v_fr_filtered,v_rl_filtered,v_rr_filtered;
 
 // ! PID 默认关闭
 // **************************** 变量定义 ****************************
@@ -51,7 +59,7 @@ void readV__D(void *parameter);
 static void readV__D_for_timer(void *parameter);
 
 void PIDController_Init(PIDController *pid);
-void pid_motor_control_entry(void *parameter);
+void motor_control_entry(void *parameter);
 float PIDController_weight_update(PIDController *pid, float setpoint, float measurement);
 
 // * 跟调试有关的函数
@@ -64,8 +72,12 @@ void minimum_encoder_printer_entry(void *parameter);
 static void duty_set(int argc, char **argv);
 static void enable_pid(int argc, char **argv);
 
+void get_true_coordinates(float new_height, float new_width, float *corner_x, float *corner_y, float *raw_coordinates_x, float *raw_coordinates_y, arm_matrix_instance_f32 *result); // 输入角点与校正前圆心坐标，返回校正后各目标点坐标
+static void test_get_true_coordinates(int argc, char **argv);
+
 void direction_control(char direction, float speed);
 static void direction_control_m(int argc, char **argv);
+static void test_matrix_function();
 // **************************** 函数定义 ****************************
 
 // **************************** msh 初始化 ****************************
@@ -74,6 +86,9 @@ MSH_CMD_EXPORT(dir_set, "dir_set sample - dir_set fl 1");
 MSH_CMD_EXPORT(duty_set, "sweep_pwm_duty sample - duty_set fl 50");
 MSH_CMD_EXPORT(enable_pid, "dir_set sample - dir_set fl 1");
 MSH_CMD_EXPORT(direction_control_m, "direction_control sample - direction_control_m w 50");
+MSH_CMD_EXPORT(test_get_true_coordinates, "Dont need parameters");
+MSH_CMD_EXPORT(test_matrix_function, "Dont need parameters");
+
 // **************************** msh 初始化 ****************************
 
 int main(void)
@@ -95,7 +110,7 @@ int main(void)
     // * --------------------------------线程初始化--------------------------------
 
     // * -------------------------------- 软件定时器初始化 -------------------------------- *//
-    create_main_timer();
+    // create_main_timer();
     // * -------------------------------- 软件定时器初始化 -------------------------------- *//
 
     EnableGlobalIRQ(0);
@@ -103,9 +118,8 @@ int main(void)
     {
         //此处编写需要循环执行的代码
         gpio_toggle(B9);
-        rt_kprintf("%ld,%ld,%ld,%ld\n", (int32)(imu_acc_x * 100), (int32)(V_value.X * 100), (int32)(Dis.X * 100), (int32)(flag * 100));
-
-        rt_thread_mdelay(10);
+        // rt_kprintf("%ld,%ld,%ld,%ld\n", (int32)(imu_acc_x * 100), (int32)(V_value.X * 100), (int32)(Dis.X * 100), (int32)(flag * 100));
+        rt_thread_mdelay(100);
     }
 }
 
@@ -123,8 +137,15 @@ void devices_init()
     // * --------------------------------编码器初始化--------------------------------
     qtimer_quad_init(QTIMER_1, QTIMER1_TIMER0_C0, QTIMER1_TIMER1_C1);
     qtimer_quad_init(QTIMER_1, QTIMER1_TIMER2_C2, QTIMER1_TIMER3_C24);
-    qtimer_quad_init(QTIMER_2, QTIMER2_TIMER0_C3, QTIMER2_TIMER3_C25);
-    qtimer_quad_init(QTIMER_3, QTIMER3_TIMER2_B18, QTIMER3_TIMER3_B19);
+
+    // * 原始引脚
+    // qtimer_quad_init(QTIMER_2, QTIMER2_TIMER0_C3, QTIMER2_TIMER3_C25);
+    // qtimer_quad_init(QTIMER_3, QTIMER3_TIMER2_B18, QTIMER3_TIMER3_B19);
+    // * 原始引脚
+
+    qtimer_quad_init(QTIMER_3, QTIMER3_TIMER0_B16, QTIMER3_TIMER1_B17);
+    qtimer_quad_init(QTIMER_4, QTIMER4_TIMER0_C9, QTIMER4_TIMER1_C10);
+
     rt_kprintf("QTIMER initialization succeeded.\n");
     // * --------------------------------编码器初始化--------------------------------
 
@@ -155,16 +176,22 @@ void read_encoder_thread_entry(void *parameter)
         encoder_fr_val = qtimer_quad_get(QTIMER_1, QTIMER1_TIMER0_C0);
         rt_sem_release(encoder_fr_sem);
 
-        encoder_rl_val = qtimer_quad_get(QTIMER_2, QTIMER2_TIMER0_C3);
+        // encoder_rl_val = qtimer_quad_get(QTIMER_2, QTIMER2_TIMER0_C3);
+        // rt_sem_release(encoder_rl_sem);
+
+        // encoder_rr_val = qtimer_quad_get(QTIMER_3, QTIMER3_TIMER2_B18);
+        // rt_sem_release(encoder_rr_sem);
+
+        encoder_rl_val = qtimer_quad_get(QTIMER_3, QTIMER3_TIMER0_B16);
         rt_sem_release(encoder_rl_sem);
 
-        encoder_rr_val = qtimer_quad_get(QTIMER_3, QTIMER3_TIMER2_B18);
+        encoder_rr_val = qtimer_quad_get(QTIMER_4, QTIMER4_TIMER0_C9);
         rt_sem_release(encoder_rr_sem);
 
         qtimer_quad_clear(QTIMER_1, QTIMER1_TIMER0_C0);
         qtimer_quad_clear(QTIMER_1, QTIMER1_TIMER2_C2);
-        qtimer_quad_clear(QTIMER_2, QTIMER2_TIMER0_C3);
-        qtimer_quad_clear(QTIMER_3, QTIMER3_TIMER2_B18);
+        qtimer_quad_clear(QTIMER_3, QTIMER3_TIMER0_B16);
+        qtimer_quad_clear(QTIMER_4, QTIMER4_TIMER0_C9);
         rt_thread_mdelay(encoder_sample_time_ms);
     }
 }
@@ -199,13 +226,13 @@ int create_main_dynamic_thread(void)
     // * 编码器读取线程创建
 
     // * PID控制线程创建
-    tid = rt_thread_create("pid_motor_control_entry", // 线程名称
-                           pid_motor_control_entry,   // 线程入口函数
-                           RT_NULL,                   // 线程参数
-                           1024,                      // 1024 个字节的栈空间
-                           5,                         // 线程优先级为5，数值越小，优先级越高，0为最高优先级。
-                                                      // 可以通过修改rt_config.h中的RT_THREAD_PRIORITY_MAX宏定义(默认值为8)来修改最大支持的优先级
-                           5);                        // 时间片为5
+    tid = rt_thread_create("motor_control_entry", // 线程名称
+                           motor_control_entry,   // 线程入口函数
+                           RT_NULL,               // 线程参数
+                           1024,                  // 1024 个字节的栈空间
+                           5,                     // 线程优先级为5，数值越小，优先级越高，0为最高优先级。
+                                                  // 可以通过修改rt_config.h中的RT_THREAD_PRIORITY_MAX宏定义(默认值为8)来修改最大支持的优先级
+                           5);                    // 时间片为5
     rt_kprintf("create dynamic thread: pid_motor_control_thread.\n");
     if (tid != RT_NULL) // 线程创建成功
     {
@@ -220,13 +247,13 @@ int create_main_dynamic_thread(void)
     // * PID控制线程创建
 
     // * 传感器读取线程创建
-    tid = rt_thread_create("read_GY_85_thread",     // 线程名称
-                           read_GY_85_thread_entry, // 线程入口函数
-                           RT_NULL,                 // 线程参数
-                           1024,                    // 1024 个字节的栈空间
-                           5,                       // 线程优先级为5，数值越小，优先级越高，0为最高优先级。
-                                                    // 可以通过修改rt_config.h中的RT_THREAD_PRIORITY_MAX宏定义(默认值为8)来修改最大支持的优先级
-                           5);                      // 时间片为5
+    tid = rt_thread_create("readV__D_thread", // 线程名称
+                           readV__D,          // 线程入口函数
+                           RT_NULL,           // 线程参数
+                           1024,              // 1024 个字节的栈空间
+                           5,                 // 线程优先级为5，数值越小，优先级越高，0为最高优先级。
+                                              // 可以通过修改rt_config.h中的RT_THREAD_PRIORITY_MAX宏定义(默认值为8)来修改最大支持的优先级
+                           5);                // 时间片为5
     rt_kprintf("create dynamic thread: read_GY_85_thread.\n");
     if (tid != RT_NULL) // 线程创建成功
     {
@@ -243,27 +270,31 @@ int create_main_dynamic_thread(void)
     return 0;
 }
 
-void pid_motor_control_entry(void *parameter)
+void motor_control_entry(void *parameter)
 {
 
     // 读取并打印编码器的值
 
     static rt_err_t result;
-    float v_fl, v_fr, v_rl, v_rr = 0; // ! 均为测量值
 
     float revised_fl_duty, revised_fr_duty, revised_rl_duty, revised_rr_duty = 0;
     uint8 dir_fl, dir_fr, dir_rl, dir_rr = 0;
     int32 revised_rl_duty_int = 0;
 
-    PIDController fl_pid_controller;
-    PIDController fr_pid_controller;
-    PIDController rl_pid_controller;
-    PIDController rr_pid_controller;
+    PIDController fl_speed_pid_controller;
+    PIDController fr_speed_pid_controller;
+    PIDController rl_speed_pid_controller;
+    PIDController rr_speed_pid_controller;
 
-    PIDController_Init(&fl_pid_controller);
-    PIDController_Init(&fr_pid_controller);
-    PIDController_Init(&rl_pid_controller);
-    PIDController_Init(&rr_pid_controller);
+    PIDController fl_distance_pid_controller;
+    PIDController fr_distance_pid_controller;
+    PIDController rl_distance_pid_controller;
+    PIDController rr_distance_pid_controller;
+
+    PIDController_Init(&fl_speed_pid_controller);
+    PIDController_Init(&fr_speed_pid_controller);
+    PIDController_Init(&rl_speed_pid_controller);
+    PIDController_Init(&rr_speed_pid_controller);
 
     // v_rl_expect=-150;
     rt_thread_mdelay(500);
@@ -288,10 +319,10 @@ void pid_motor_control_entry(void *parameter)
 
             if (pid_enabled)
             {
-                revised_fl_duty = PIDController_weight_update(&fl_pid_controller, v_fl_expect, v_fl);
-                revised_fr_duty = PIDController_weight_update(&fr_pid_controller, v_fr_expect, v_fr);
-                revised_rl_duty = PIDController_weight_update(&rl_pid_controller, v_rl_expect, v_rl);
-                revised_rr_duty = PIDController_weight_update(&rr_pid_controller, v_rr_expect, v_rr);
+                revised_fl_duty = PIDController_weight_update(&fl_speed_pid_controller, v_fl_expect, v_fl);
+                revised_fr_duty = PIDController_weight_update(&fr_speed_pid_controller, v_fr_expect, v_fr);
+                revised_rl_duty = PIDController_weight_update(&rl_speed_pid_controller, v_rl_expect, v_rl);
+                revised_rr_duty = PIDController_weight_update(&rr_speed_pid_controller, v_rr_expect, v_rr);
 
                 // * -------------------------------- 更新转向 -------------------------------- *//
                 dir_fl = (revised_fl_duty > 0 ? 0 : 1);
@@ -314,10 +345,10 @@ void pid_motor_control_entry(void *parameter)
             }
             else
             {
-                pwm_duty(FL_PWM, 0);
-                pwm_duty(FR_PWM, 0);
-                pwm_duty(RL_PWM, 0);
-                pwm_duty(RR_PWM, 0);
+                // pwm_duty(FL_PWM, 0);
+                // pwm_duty(FR_PWM, 0);
+                // pwm_duty(RL_PWM, 0);
+                // pwm_duty(RR_PWM, 0);
             }
             // 因为不能打印浮点数,所以把它乘100
             // TODO open this
@@ -605,8 +636,10 @@ void readV__D(void *parameter)
     {
         V_get();
         Dis_get();
-        rt_kprintf("%ld,%ld,%ld,%ld\n", (int32)(imu_acc_x * 100), (int32)(V_value.X * 100), (int32)(Dis.X * 100), (int32)(flag * 100));
-        rt_thread_mdelay(2);
+        if (PRINT_ACC_ENABLED)
+            // rt_kprintf("%ld,%ld,%ld,%ld,%ld\n", (int32)(imu_acc_x * 100), (int32)(V_value.X * 100), (int32)(Dis.X * 100), (int32)(flag * 100), (int32)(100 * v_fr));
+            rt_kprintf("%ld,%ld,%ld,%ld,%ld,%ld\n", (int32)(Dis2.X * 100), (int32)(Dis2.Y * 100), (int32)(100 * v_fl), (int32)(100 * v_fr), (int32)(100 * v_rl), (int32)(100 * v_rr));
+        rt_thread_mdelay(25);
     }
 }
 
@@ -630,4 +663,149 @@ int create_main_timer(void)
         rt_kprintf("read_velocity_timer start successful!\n");
     }
     return 0;
+}
+
+void get_true_coordinates(float new_height, float new_width, float *corner_x, float *corner_y, float *raw_coordinates_x, float *raw_coordinates_y, arm_matrix_instance_f32 *result)
+{
+    rt_enter_critical();
+    // ? MATLAB 公式中的 corner_x 存的是 y 的坐标, 这里也这样操作吧
+    float *p = corner_x;
+    corner_x = corner_y;
+    corner_y = p;
+
+    float Y[] = {1, 1, new_width, new_width};
+    float X[] = {1, new_height, new_height, 1};
+    // 输入按顺时针方向排列的角点坐标
+    // * -------------------------------- 求解变换矩阵 -------------------------------- *//
+    arm_matrix_instance_f32 A;
+    // ! 这个矩阵好像输错了！
+    // float32_t A_data[] = {corner_x[0], corner_y[0], 1, 0, 0, 0, -X[0] * corner_x[0], -X[0] * corner_y[1],
+    //                       0, 0, 0, corner_x[0], corner_y[0], 1, -Y[0] * corner_x[0], -Y[0] * corner_y[1],
+    //                       corner_x[1], corner_y[1], 1, 0, 0, 0, -X[1] * corner_x[1], -X[1] * corner_y[1],
+    //                       0, 0, 0, corner_x[1], corner_y[1], 1, -Y[1] * corner_x[1], -Y[1] * corner_y[1],
+    //                       corner_x[2], corner_y[2], 1, 0, 0, 0, -X[2] * corner_x[2], -X[2] * corner_y[2],
+    //                       0, 0, 0, corner_x[2], corner_y[2], 1, -Y[2] * corner_x[2], -Y[2] * corner_y[2],
+    //                       corner_x[3], corner_y[3], 1, 0, 0, 0, -X[3] * corner_x[3], -X[3] * corner_y[3],
+    //                       0, 0, 0, corner_x[3], corner_y[3], 1, -Y[3] * corner_x[3], -Y[3] * corner_y[3]};
+
+    // * 这个是新打的
+    float32_t A_data[] = {corner_x[0], corner_y[0], 1, 0, 0, 0, -X[0] * corner_x[0], -X[0] * corner_y[0],
+                          0, 0, 0, corner_x[0], corner_y[0], 1, -Y[0] * corner_x[0], -Y[0] * corner_y[0],
+                          corner_x[1], corner_y[1], 1, 0, 0, 0, -X[1] * corner_x[1], -X[1] * corner_y[1],
+                          0, 0, 0, corner_x[1], corner_y[1], 1, -Y[1] * corner_x[1], -Y[1] * corner_y[1],
+                          corner_x[2], corner_y[2], 1, 0, 0, 0, -X[2] * corner_x[2], -X[2] * corner_y[2],
+                          0, 0, 0, corner_x[2], corner_y[2], 1, -Y[2] * corner_x[2], -Y[2] * corner_y[2],
+                          corner_x[3], corner_y[3], 1, 0, 0, 0, -X[3] * corner_x[3], -X[3] * corner_y[3],
+                          0, 0, 0, corner_x[3], corner_y[3], 1, -Y[3] * corner_x[3], -Y[3] * corner_y[3]};
+
+    rt_kprintf("A_data[i]\n");
+    for (int i = 0; i < 64; i++)
+        rt_kprintf("%ld\n", (int32)(100 * A_data[i]));
+    rt_kprintf("-----------\n");
+
+    A.numCols = 8;
+    A.numRows = 8;
+    A.pData = A_data;
+
+    rt_kprintf("A.pData[i]\n");
+    for (int i = 0; i < 64; i++)
+        rt_kprintf("%ld\n", (int32)(100 * A.pData[i]));
+    rt_kprintf("-----------\n");
+
+    // float32_t A_data[8][8] = {{corner_x[1], corner_y[1], 1, 0, 0, 0, -X[1] * corner_x[1], -X[1] * corner_y[1]},
+    //                           {0, 0, 0, corner_x[1], corner_y[1], 1, -Y[1] * corner_x[1], -Y[1] * corner_y[1]},
+    //                           {corner_x[2], corner_y[2], 1, 0, 0, 0, -X[2] * corner_x[2], -X[2] * corner_y[2]},
+    //                           {0, 0, 0, corner_x[2], corner_y[2], 1, -Y[2] * corner_x[2], -Y[2] * corner_y[2]},
+    //                           {corner_x[3], corner_y[3], 1, 0, 0, 0, -X[3] * corner_x[3], -X[3] * corner_y[3]},
+    //                           {0, 0, 0, corner_x[3], corner_y[3], 1, -Y[3] * corner_x[3], -Y[3] * corner_y[3]},
+    //                           {corner_x[4], corner_y[4], 1, 0, 0, 0, -X[4] * corner_x[4], -X[4] * corner_y[4]},
+    //                           {0, 0, 0, corner_x[4], corner_y[4], 1, -Y[4] * corner_x[4], -Y[4] * corner_y[4]}};
+
+    // arm_mat_init_f32(&A, 8, 8, A_data);
+    // A.pData = A_data;
+    // A.numRows = 8;
+    // A.numCols = 8;
+    arm_matrix_instance_f32 b;
+
+    float32_t b_data[] = {X[1], Y[1], X[2], Y[2], X[3], Y[3], X[4], Y[4]};
+    arm_mat_init_f32(&b, 8, 1, b_data);
+
+    arm_matrix_instance_f32 A_inv;
+    float32_t A_inv_data[8 * 8] = {0};
+    arm_mat_init_f32(&A_inv, 8, 8, A_inv_data);
+    arm_mat_inverse_f32(&A, &A_inv);
+    rt_kprintf("A_inv_data.pData[i]\n");
+    for (int i = 0; i < 64; i++)
+        rt_kprintf("%ld\n", (int32)(100 * A_inv.pData[i]));
+    rt_kprintf("-----------\n");
+
+    // arm_matrix_instance_f32 transform_matrix;
+    // float32_t transform_matrix_data[8] = {0};
+    // arm_mat_init_f32(&transform_matrix, 8, 1, transform_matrix_data);
+
+    int status = arm_mat_mult_f32(&A_inv, &b, result);
+    rt_kprintf("%d\n", status);
+    // * -------------------------------- 求解变换矩阵 -------------------------------- *//
+
+    rt_exit_critical();
+}
+
+static void test_get_true_coordinates(int argc, char **argv)
+{
+    // float max_x, max_y, min_x, min_y;
+    // uint32_t __ = 0; // 存放不需要的返回值
+    // float corner_x[] = {61.1259314456036, 50.0380029806259, 188.100596125186, 192.035022354695};
+    // float corner_y[] = {59.2779433681073, 254.210879284650, 258.860655737705, 66.7891207153502};
+
+    // arm_max_f32(corner_x, sizeof(corner_x) / sizeof(corner_x[0]), &max_x, &__);
+    // arm_max_f32(corner_y, sizeof(corner_y) / sizeof(corner_y[0]), &max_y, &__);
+    // arm_min_f32(corner_x, sizeof(corner_x) / sizeof(corner_x[0]), &min_x, &__);
+    // arm_min_f32(corner_y, sizeof(corner_y) / sizeof(corner_y[0]), &min_y, &__);
+
+    // float new_width = max_x - min_x;
+    // float new_height = max_y - min_y;
+
+    // arm_matrix_instance_f32 transform_matrix;
+    // float transform_matrix_data[9] = {0};
+    // arm_mat_init_f32(&transform_matrix, 8, 1, transform_matrix_data);
+    // get_true_coordinates(new_height, new_width, corner_x, corner_y, NULL, NULL, &transform_matrix);
+    // transform_matrix_data[8] = 1;
+
+    // for (int i = 0; i < 9; i++)
+    //     rt_kprintf("%ld\n", (int32)(100 * transform_matrix.pData[i]));
+    float corner[] = {59.2779433681073,
+                      61.1259314456036,
+                      254.210879284650,
+                      50.0380029806259,
+                      258.860655737705,
+                      188.100596125186,
+                      66.7891207153502,
+                      192.035022354695};
+    float result[9] = {0};
+    get_transform_matrix(corner, result);
+
+    for (int i = 0; i < 9; i++)
+        rt_kprintf("%ld\n", (int32)(100 * result[i]));
+}
+
+static void test_matrix_function()
+{
+    rt_enter_critical();
+    arm_matrix_instance_f32 A;
+    float32_t A_data[] = {8, 1, 6, 3, 5, 7, 4, 9, 2};
+    arm_mat_init_f32(&A, 3, 3, A_data);
+    rt_kprintf("A.pData[i]\n");
+    for (int i = 0; i < 9; i++)
+        rt_kprintf("%ld\n", (int32)(100 * A.pData[i]));
+
+    arm_matrix_instance_f32 A_inv;
+    float32_t A_inv_data[9] = {0};
+    arm_mat_init_f32(&A_inv, 3, 3, A_inv_data);
+
+    arm_mat_inverse_f32(&A, &A_inv);
+
+    rt_kprintf("A_inv.pData[i]\n");
+    for (int i = 0; i < 9; i++)
+        rt_kprintf("%ld\n", (int32)(100 * A_inv.pData[i]));
+    rt_exit_critical();
 }

@@ -9,6 +9,10 @@
         "seekfree_w25qxxjv.h": "c",
         "arm_math.h": "c",
         "rand.h": "c",
-        "zf_systick.h": "c"
+        "zf_systick.h": "c",
+        "get_transform_matrix_initialize.h": "c",
+        "get_transform_matrix_terminate.h": "c",
+        "rt_nonfinite.h": "c",
+        "stdlib.h": "c"
     }
 }

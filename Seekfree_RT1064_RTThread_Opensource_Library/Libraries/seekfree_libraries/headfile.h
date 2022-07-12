@@ -20,7 +20,6 @@
 #ifndef _headfile_h
 #define _headfile_h
 
-
 #include <stdint.h>
 #include "fsl_common.h"
 
@@ -41,7 +40,6 @@
 #include "fsl_sd_disk.h"
 
 #include "SEEKFREE_PRINTF.h"
-
 
 //------逐飞科技单片机外设驱动头文件
 #include "zf_gpio.h"
@@ -86,6 +84,33 @@
 #include "SEEKFREE_SCC8660.h"
 
 #endif
+// * -------------------------------- 变换矩阵 -------------------------------- *//
+#ifndef GET_TRANSFORM_MATRIX_H
+#define GET_TRANSFORM_MATRIX_H
+
+/* Include Files */
+#include "get_transform_matrix.h"
+#include "rtwtypes.h"
+
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
+    /* Function Declarations */
+    extern void get_transform_matrix(const float corner_coordinates[8],
+                                     float transform_matrix[9]);
+
+    extern void get_transform_matrix_initialize(void);
+
+    extern void get_transform_matrix_terminate(void);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif
+// * -------------------------------- 变换矩阵 -------------------------------- *//
 
 // **************************** 用户宏定义 ****************************
 #define FL_PWM (PWM1_MODULE3_CHB_D1)
@@ -105,7 +130,7 @@
 #define wheel_week_length (19.163) // 轮子周长, 单位为厘米
 #define wheel_gear_count (104.0)
 
-#define encoder_sample_time_ms (50.0)
+#define encoder_sample_time_ms (25.0)
 // **************************** 用户宏定义 ****************************
 
 // **************************** 用户结构体类型定义 ****************************

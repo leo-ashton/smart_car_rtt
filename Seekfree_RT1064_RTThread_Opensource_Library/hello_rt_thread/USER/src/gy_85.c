@@ -5,12 +5,15 @@
 // #include "kalman.h"
 #include "math.h"
 #include "assert.h"
+#include "arm_math.h"
+
+#define jiaozheng_count (50)
 
 unsigned char BUF[6];
 INT16_XYZ A_value, H_value, T_value; // 读到的三个传感器的值，存放计算得到坐标
 INT16_XYZ T_offset;
 double Angle;
-float_XYZ Dis, V_value;
+float_XYZ Dis, V_value, Dis2;
 float imu_acc_x = 0, imu_acc_y = 0, imu_acc_z = 0;
 float imu_acc_x_last = 0, imu_acc_y_last = 0;																	  //记录上一次
 float imu_acc_x_first[110] = {0}, imu_acc_y_first[110] = {0}, imu_acc_x_2nd[150] = {0}, imu_acc_y_2nd[150] = {0}; //
@@ -20,16 +23,57 @@ float V_value_x_last = 0, V_value_y_last = 0;
 float ax = 0, ay = 0;
 int jiaozheng = 0;
 int flag = 0;
+extern float v_fl, v_fr, v_rl, v_rr;
+float v_fl_filtered = 0, v_fr_filtered = 0, v_rl_filtered = 0, v_rr_filtered = 0;
+
 //卡尔曼滤波设初值
 KFP KFP_imu_acc_x = {0.02, 0, 0, 0, 0.001, 0.6};
-KFP KFP_imu_acc_x2 = {0.02, 0, 0, 0, 0.01, 0.6};
-KFP KFP_imu_acc_y2 = {0.02, 0, 0, 0, 0.01, 0.6};
 KFP KFP_imu_acc_y = {0.02, 0, 0, 0, 0.001, 0.6};
+KFP KFP_encoder_fl = {0.02, 0, 0, 0, 0.01, 0.6};
+KFP KFP_encoder_fr = {0.02, 0, 0, 0, 0.01, 0.6};
+KFP KFP_encoder_rl = {0.02, 0, 0, 0, 0.01, 0.6};
+KFP KFP_encoder_rr = {0.02, 0, 0, 0, 0.01, 0.6};
 KFP KFP_V_value_x = {0.02, 0, 0, 0, 0.001, 0.6};
 KFP KFP_V_value_y = {0.02, 0, 0, 0, 0.001, 0.6};
 KFP KFP_D_value_x = {0.02, 0, 0, 0, 0.001, 0.6};
 KFP KFP_D_value_y = {0.02, 0, 0, 0, 0.001, 0.6};
 //*******ADXL345*********************************
+void accelerater_init()
+{
+	// read_ADXL345();
+	// // 读取前
+	// // imu_acc_x=kalmanFilter(&KFP_imu_acc_x2,imu_acc_x);
+	// // imu_acc_y=kalmanFilter(&KFP_imu_acc_y2,imu_acc_y);
+	// if (count_flag < 150 && count_flag > 39) //记录第40次到150次的值，第一次修正
+	// {
+	// 	imu_acc_x_first[count_flag - 40] = imu_acc_x;
+	// 	imu_acc_y_first[count_flag - 40] = imu_acc_y;
+	// 	count_flag += 1;
+	// }
+	// else if (count_flag == 150)
+	// {
+	// 	// 求平均
+	// 	A_average_x1 = aver110(imu_acc_x_first);
+	// 	A_average_y1 = aver110(imu_acc_y_first);
+	// 	count_flag += 1;
+	// }
+	// else if (count_flag < 301) // 第二次修正,151到301次
+	// {
+	// 	//再读取第一次修正后的值，进行第二次修正
+	// 	imu_acc_x -= A_average_x1;
+	// 	imu_acc_y -= A_average_y1;
+	// 	imu_acc_x_2nd[count_flag - 151] = imu_acc_x;
+	// 	imu_acc_y_2nd[count_flag - 151] = imu_acc_y;
+	// 	count_flag += 1;
+	// }
+	// else if (count_flag == 301)
+	// {
+	// 	//再计算平均值，第二次的平均值
+	// 	A_average_x2 = aver150(imu_acc_x_2nd);
+	// 	A_average_y2 = aver150(imu_acc_y_2nd);
+	// 	count_flag += 1;
+	// }
+}
 void read_ADXL345(void)
 {
 	simiic_read_regs(ADXL345_Addr, 0x32, BUF, 6, SIMIIC); //先输出低位再输出高位
@@ -286,10 +330,10 @@ void V_get(void)
 		{
 			V_value.X += 0; // 得到速度，一阶积分
 			imu_acc_x_last = 0;
-			// V_value.X=kalmanFilter(&KFP_V_value_x,V_value.X);
-			//		V_value.Y+=0*dt1-fabs(0-imu_acc_y_last)/2*dt1;// 得到速度，一阶积分
-			//		imu_acc_y_last=0;
-			//		V_value.Y=kalmanFilter(&KFP_V_value_y,V_value.Y);
+			// V_value.X = kalmanFilter(&KFP_V_value_x, V_value.X);
+			V_value.Y += 0 * dt1 - fabs(0 - imu_acc_y_last) / 2 * dt1; // 得到速度，一阶积分
+			imu_acc_y_last = 0;
+			// V_value.Y = kalmanFilter(&KFP_V_value_y, V_value.Y);
 		}
 		else
 		{
@@ -302,8 +346,8 @@ void V_get(void)
 		}
 		jiaozheng = jiaozheng + 1;
 		flag = 0;
-
-		if (jiaozheng == 500) // 强制为零
+		// 矫正时间=rt_thread_mdelay*jiaozheng_count（ms）
+		if (jiaozheng == jiaozheng_count) // 强制为零
 		{
 			jiaozheng = 0;
 
@@ -332,4 +376,18 @@ void Dis_get(void)
 	V_value_y_last = V_value.Y;
 	Dis.X = kalmanFilter(&KFP_D_value_x, Dis.X);
 	Dis.Y = kalmanFilter(&KFP_D_value_y, Dis.Y);
+	//滤波
+	v_fl_filtered = kalmanFilter(&KFP_encoder_fl, v_fl);  //前左
+	v_fr_filtered = -kalmanFilter(&KFP_encoder_fr, v_fr); //前右
+	v_rl_filtered = kalmanFilter(&KFP_encoder_rl, v_rl);  //后左
+	v_rr_filtered = -kalmanFilter(&KFP_encoder_rr, v_rr); //后右
+
+	// v_fl_filtered = v_fl; //前左
+	// v_fr_filtered = v_fr; //前右
+	// v_rl_filtered = v_rl; //后左
+	// v_rr_filtered = v_rr; //后右
+
+	// 计算位移
+	Dis2.X += 1.414 / 2 * (v_fl_filtered + v_fr_filtered + v_rl_filtered + v_rr_filtered) * dt2;
+	Dis2.Y += 1.414 / 2 * (-v_fl_filtered + v_fr_filtered + v_rl_filtered - v_rr_filtered) * dt2;
 }
