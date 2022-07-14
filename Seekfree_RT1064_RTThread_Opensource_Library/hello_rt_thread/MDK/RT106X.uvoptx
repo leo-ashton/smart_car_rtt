@@ -414,7 +414,7 @@
           <Type>0</Type>
           <LineNumber>704</LineNumber>
           <EnabledFlag>1</EnabledFlag>
-          <Address>-2147428746</Address>
+          <Address>-2147376598</Address>
           <ByteObject>0</ByteObject>
           <HtxType>0</HtxType>
           <ManyObjects>0</ManyObjects>
@@ -424,22 +424,6 @@
           <Filename>..\USER\src\main.c</Filename>
           <ExecCommand></ExecCommand>
           <Expression>\\RT106X\../USER/src/main.c\704</Expression>
-        </Bp>
-        <Bp>
-          <Number>1</Number>
-          <Type>0</Type>
-          <LineNumber>690</LineNumber>
-          <EnabledFlag>1</EnabledFlag>
-          <Address>-2147428748</Address>
-          <ByteObject>0</ByteObject>
-          <HtxType>0</HtxType>
-          <ManyObjects>0</ManyObjects>
-          <SizeOfObject>0</SizeOfObject>
-          <BreakByAccess>0</BreakByAccess>
-          <BreakIfRCount>1</BreakIfRCount>
-          <Filename>..\USER\src\main.c</Filename>
-          <ExecCommand></ExecCommand>
-          <Expression>\\RT106X\../USER/src/main.c\690</Expression>
         </Bp>
       </Breakpoint>
       <WatchWindow1>

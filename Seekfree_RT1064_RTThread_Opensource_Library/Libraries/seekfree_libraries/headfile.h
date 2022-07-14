@@ -113,15 +113,15 @@ extern "C"
 // * -------------------------------- 变换矩阵 -------------------------------- *//
 
 // **************************** 用户宏定义 ****************************
-#define FL_PWM (PWM1_MODULE3_CHB_D1)
-#define FR_PWM (PWM1_MODULE3_CHA_D0)
-#define RL_PWM (PWM1_MODULE1_CHA_D14)
-#define RR_PWM (PWM1_MODULE1_CHB_D15)
+#define FL_PWM (PWM1_MODULE3_CHA_D0)
+#define FR_PWM (PWM1_MODULE3_CHB_D1)
+#define RL_PWM (PWM2_MODULE2_CHB_C11)
+#define RR_PWM (PWM2_MODULE3_CHA_B9)
 
-#define FL_DIR (D3)
-#define FR_DIR (D2)
-#define RL_DIR (D12)
-#define RR_DIR (D13)
+#define FL_DIR (D2)
+#define FR_DIR (D3)
+#define RL_DIR (B12)
+#define RR_DIR (B13)
 
 #define duty_convert(x) (x / 100.0 * PWM_DUTY_MAX) // x为期望的占空比, 该函数将期望占空比直接转换为 pwm_duty 函数接受的参数
 

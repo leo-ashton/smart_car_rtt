@@ -4,6 +4,7 @@
 #include "user_debug.h"
 #include <rtthread.h>
 #include "arm_math.h"
+#include <string.h>
 
 // * -------------------------------- 分割线 -------------------------------- *//
 
@@ -14,12 +15,14 @@
 // 之前震荡的原因是什么? 把 behavior 调整到 robust 一侧就好了
 
 // * -------------------------------- 需要在串口打印的数据 -------------------------------- *//
-uint8 PRINT_SPEED_ENABLED = 0;
-uint8 PRINT_ACC_ENABLED = 1;
+uint8 PRINT_SPEED_ENABLED = 1;
 // * -------------------------------- 需要在串口打印的数据 -------------------------------- *//
 
 // * -------------------------------- 一些设置 -------------------------------- *//
-
+// ! PID 默认关闭
+uint8 SPEED_PID_ENABLED = 0;
+uint8 POSITION_PID_ENABLED = 0;
+#define MAX_SPEED 550
 // * -------------------------------- 一些设置 -------------------------------- *//
 
 // **************************** 变量定义 ****************************
@@ -28,12 +31,11 @@ static rt_sem_t encoder_fr_sem = RT_NULL; // 创建指向信号量的指针
 static rt_sem_t encoder_rl_sem = RT_NULL; // 创建指向信号量的指针
 static rt_sem_t encoder_rr_sem = RT_NULL; // 创建指向信号量的指针
 
-static int32 v_fl_expect = 50, v_fr_expect = 50, v_rl_expect = 50, v_rr_expect = 50;
+static int32 v_fl_expect = 0, v_fr_expect = 0, v_rl_expect = 0, v_rr_expect = 0;
+float x_expect = 0, y_expect = 0;
 
 int32 encoder_fl_val = 0, encoder_fr_val = 0, encoder_rl_val = 0, encoder_rr_val = 0;
 float v_fl, v_fr, v_rl, v_rr = 0; // ! 均为测量值
-
-uint8 pid_enabled = 0;
 
 extern double Angle;
 extern float_XYZ Dis, Dis2;
@@ -44,9 +46,15 @@ extern int count_flag;
 extern float V_value_x_last;
 extern float ax, ay;
 extern int flag;
+
+extern float v_fl_filtered, v_fr_filtered, v_rl_filtered, v_rr_filtered;
+// v_fl_filtered = kalmanFilter(&KFP_encoder_fl, v_fl);  //前左
+// v_fr_filtered = -kalmanFilter(&KFP_encoder_fr, v_fr); //前右
+// v_rl_filtered = kalmanFilter(&KFP_encoder_rl, v_rl);  //后左
+// v_rr_filtered = -kalmanFilter(&KFP_encoder_rr, v_rr); //后右
+
 // extern float v_fl_filtered,v_fr_filtered,v_rl_filtered,v_rr_filtered;
 
-// ! PID 默认关闭
 // **************************** 变量定义 ****************************
 
 // **************************** 函数定义 ****************************
@@ -58,7 +66,7 @@ void read_GY_85_thread_entry(void *parameter);
 void readV__D(void *parameter);
 static void readV__D_for_timer(void *parameter);
 
-void PIDController_Init(PIDController *pid);
+void PIDController_Init(PIDController *pid, char *wheel_axis, char *type);
 void motor_control_entry(void *parameter);
 float PIDController_weight_update(PIDController *pid, float setpoint, float measurement);
 
@@ -66,6 +74,7 @@ float PIDController_weight_update(PIDController *pid, float setpoint, float meas
 int create_system_identification_thread(void);
 
 static void speed_set(int argc, char **argv);
+static void position_set(int argc, char **argv);
 static void dir_set(int argc, char **argv);
 
 void minimum_encoder_printer_entry(void *parameter);
@@ -88,7 +97,7 @@ MSH_CMD_EXPORT(enable_pid, "dir_set sample - dir_set fl 1");
 MSH_CMD_EXPORT(direction_control_m, "direction_control sample - direction_control_m w 50");
 MSH_CMD_EXPORT(test_get_true_coordinates, "Dont need parameters");
 MSH_CMD_EXPORT(test_matrix_function, "Dont need parameters");
-
+MSH_CMD_EXPORT(position_set, "position_set x 10");
 // **************************** msh 初始化 ****************************
 
 int main(void)
@@ -127,11 +136,13 @@ void devices_init()
 {
     // 完成硬件的初始化.
     // * --------------------------------GPIO 初始化--------------------------------
-    gpio_init(B9, GPO, 0, GPIO_PIN_CONFIG);
+    gpio_init(B9, GPO, 0, GPIO_PIN_CONFIG); // LED
     gpio_init(FL_DIR, GPO, 0, GPIO_PIN_CONFIG);
     gpio_init(FR_DIR, GPO, 0, GPIO_PIN_CONFIG);
     gpio_init(RL_DIR, GPO, 0, GPIO_PIN_CONFIG);
     gpio_init(RR_DIR, GPO, 0, GPIO_PIN_CONFIG);
+    // B29 DIR B25 PWM
+    // B28 DIR B24 PWM
     // * --------------------------------GPIO 初始化--------------------------------
 
     // * --------------------------------编码器初始化--------------------------------
@@ -276,7 +287,8 @@ void motor_control_entry(void *parameter)
     // 读取并打印编码器的值
 
     static rt_err_t result;
-
+    float revised_x_speed = 0, revised_y_speed = 0;
+    float revised_fl_speed, revised_fr_speed, revised_rl_speed, revised_rr_speed = 0;
     float revised_fl_duty, revised_fr_duty, revised_rl_duty, revised_rr_duty = 0;
     uint8 dir_fl, dir_fr, dir_rl, dir_rr = 0;
     int32 revised_rl_duty_int = 0;
@@ -286,15 +298,16 @@ void motor_control_entry(void *parameter)
     PIDController rl_speed_pid_controller;
     PIDController rr_speed_pid_controller;
 
-    PIDController fl_distance_pid_controller;
-    PIDController fr_distance_pid_controller;
-    PIDController rl_distance_pid_controller;
-    PIDController rr_distance_pid_controller;
+    PIDController x_axis_pid_controller;
+    PIDController y_axis_pid_controller;
 
-    PIDController_Init(&fl_speed_pid_controller);
-    PIDController_Init(&fr_speed_pid_controller);
-    PIDController_Init(&rl_speed_pid_controller);
-    PIDController_Init(&rr_speed_pid_controller);
+    PIDController_Init(&fl_speed_pid_controller, "fl", "speed");
+    PIDController_Init(&fr_speed_pid_controller, "fr", "speed");
+    PIDController_Init(&rl_speed_pid_controller, "rl", "speed");
+    PIDController_Init(&rr_speed_pid_controller, "rr", "speed");
+
+    PIDController_Init(&x_axis_pid_controller, "x", "position");
+    PIDController_Init(&y_axis_pid_controller, "y", "position");
 
     // v_rl_expect=-150;
     rt_thread_mdelay(500);
@@ -305,6 +318,7 @@ void motor_control_entry(void *parameter)
         result = rt_sem_take(encoder_fr_sem, RT_WAITING_FOREVER);
         result = rt_sem_take(encoder_rl_sem, RT_WAITING_FOREVER);
         result = rt_sem_take(encoder_rr_sem, RT_WAITING_FOREVER);
+        Dis_get();
         if (result == RT_EOK) // 获取编码器信号量成功
         {
             // * -------------------------------- 更新当前速度 -------------------------------- *//
@@ -312,12 +326,19 @@ void motor_control_entry(void *parameter)
             v_fr = ((encoder_fr_val / encoder_line_count) * encoder_gear_count / wheel_gear_count) * wheel_week_length * 20;
             v_rl = ((encoder_rl_val / encoder_line_count) * encoder_gear_count / wheel_gear_count) * wheel_week_length * 20;
             v_rr = ((encoder_rr_val / encoder_line_count) * encoder_gear_count / wheel_gear_count) * wheel_week_length * 20;
-
-            // rt_kprintf("%d,%d,%d,%d", (int16)v_fl, (int16)v_fr, (int16)v_rl, (int16)v_rr);
-            // v_rl = (((int16)(encoder_rl->value) / encoder_line_count) * encoder_gear_count / wheel_gear_count) * wheel_week_length * 10;
             // * -------------------------------- 更新当前速度 -------------------------------- *//
-
-            if (pid_enabled)
+            if (POSITION_PID_ENABLED)
+            {
+                // * -------------------------------- 根据位移计算xy方向的期望速度 -------------------------------- *//
+                revised_x_speed = PIDController_weight_update(&x_axis_pid_controller, x_expect, Dis2.X);
+                revised_y_speed = PIDController_weight_update(&y_axis_pid_controller, y_expect, Dis2.Y);
+                v_fl_expect = revised_x_speed - revised_y_speed;
+                v_fr_expect = -(revised_x_speed + revised_y_speed);
+                v_rl_expect = revised_x_speed + revised_y_speed;
+                v_rr_expect = -(revised_x_speed - revised_y_speed);
+                // * -------------------------------- 根据位移计算xy方向的期望速度 -------------------------------- *//
+            }
+            if (SPEED_PID_ENABLED)
             {
                 revised_fl_duty = PIDController_weight_update(&fl_speed_pid_controller, v_fl_expect, v_fl);
                 revised_fr_duty = PIDController_weight_update(&fr_speed_pid_controller, v_fr_expect, v_fr);
@@ -325,10 +346,15 @@ void motor_control_entry(void *parameter)
                 revised_rr_duty = PIDController_weight_update(&rr_speed_pid_controller, v_rr_expect, v_rr);
 
                 // * -------------------------------- 更新转向 -------------------------------- *//
+                // dir_fl = (revised_fl_duty > 0 ? 0 : 1);
+                // dir_fr = (revised_fr_duty > 0 ? 0 : 1);
+                // dir_rl = (revised_rl_duty > 0 ? 1 : 0);
+                // dir_rr = (revised_rr_duty > 0 ? 0 : 1);
+
                 dir_fl = (revised_fl_duty > 0 ? 0 : 1);
                 dir_fr = (revised_fr_duty > 0 ? 0 : 1);
                 dir_rl = (revised_rl_duty > 0 ? 1 : 0);
-                dir_rr = (revised_rr_duty > 0 ? 0 : 1);
+                dir_rr = (revised_rr_duty > 0 ? 1 : 0);
 
                 gpio_set(FL_DIR, dir_fl);
                 gpio_set(FR_DIR, dir_fr);
@@ -350,41 +376,79 @@ void motor_control_entry(void *parameter)
                 // pwm_duty(RL_PWM, 0);
                 // pwm_duty(RR_PWM, 0);
             }
+            // rt_kprintf("%ld,%ld,%ld\n", (int32)(v_fr * 100), (int32)(v_fr_expect * 100), (int32)(Dis2.X * 100));
             // 因为不能打印浮点数,所以把它乘100
             // TODO open this
-            if (PRINT_SPEED_ENABLED)
-                rt_kprintf("%ld,%ld,%ld,%ld\n", (int32)(100 * v_fl), (int32)(100 * v_fr), (int32)(100 * v_rl), (int32)(100 * v_rr));
+            // if (PRINT_SPEED_ENABLED)
+            //     rt_kprintf("%ld,%ld,%ld,%ld\n", (int32)(100 * v_fl), (int32)(100 * v_fr), (int32)(100 * v_rl), (int32)(100 * v_rr));
         }
     }
 }
 
-void PIDController_Init(PIDController *pid)
+void PIDController_Init(PIDController *pid, char *wheel_axis, char *type)
 {
-    /* Clear controller variables */
-    pid->integrator = 0.0f;
-    pid->prevError = 0.0f;
+    if (strcmp(type, "speed") == 0)
+    {
+        /* Clear controller variables */
+        pid->integrator = 0.0f;
+        pid->prevError = 0.0f;
 
-    pid->differentiator = 0.0f;
-    pid->prevMeasurement = 0.0f;
+        pid->differentiator = 0.0f;
+        pid->prevMeasurement = 0.0f;
 
-    pid->out = 0.0f;
-    pid->prev_out = 0.0f;
-    pid->limMax = PWM_DUTY_MAX;
-    pid->limMin = -PWM_DUTY_MAX;
-    pid->limMaxInt = PWM_DUTY_MAX;
-    pid->limMinInt = -PWM_DUTY_MAX;
+        pid->out = 0.0f;
+        pid->prev_out = 0.0f;
+        pid->limMax = PWM_DUTY_MAX;
+        pid->limMin = -PWM_DUTY_MAX;
+        pid->limMaxInt = PWM_DUTY_MAX;
+        pid->limMinInt = -PWM_DUTY_MAX;
 
-    // pid->T = 0.1;
-    // pid->Kp = 13.125;
-    // pid->Ki = 5.49;
-    // pid->Kd = 0.05;
-    // pid->tau = 0.02;
+        // pid->T = 0.1;
+        // pid->Kp = 13.125;
+        // pid->Ki = 5.49;
+        // pid->Kd = 0.05;
+        // pid->tau = 0.02;
 
-    pid->T = encoder_sample_time_ms / 1000;
-    pid->Kp = 25.15;
-    pid->Ki = 185.31;
-    pid->Kd = -2.61;
-    pid->tau = 4.76;
+        pid->T = encoder_sample_time_ms / 1000;
+        // OLD
+        // pid->Kp = 25.15;
+        // pid->Ki = 185.31;
+        // pid->Kd = -2.61;
+        // pid->tau = 4.76;
+
+        pid->Kp = 104.95;
+        pid->Ki = 1073.62;
+        pid->Kd = 2.54;
+        pid->tau = 2285.655;
+    }
+    if (strcmp(type, "position") == 0)
+    {
+        pid->integrator = 0.0f;
+        pid->prevError = 0.0f;
+
+        pid->differentiator = 0.0f;
+        pid->prevMeasurement = 0.0f;
+
+        pid->out = 0.0f;
+        pid->prev_out = 0.0f;
+        pid->limMax = MAX_SPEED;
+        pid->limMin = -MAX_SPEED;
+        pid->limMaxInt = MAX_SPEED;
+        pid->limMinInt = -MAX_SPEED;
+
+        // OLD
+        pid->T = encoder_sample_time_ms / 1000;
+        pid->Kp = 1.8586;
+        pid->Ki = 0.6414;
+        pid->Kd = 0.2835;
+        pid->tau = 7.2936;
+
+        // pid->T = encoder_sample_time_ms / 1000;
+        // pid->Kp = 4.0663;
+        // pid->Ki = 2.8309;
+        // pid->Kd = 0.2810;
+        // pid->tau = 457.1312;
+    }
 }
 
 float PIDController_weight_update(PIDController *pid, float setpoint, float measurement)
@@ -569,6 +633,8 @@ void direction_control(char direction, float speed)
 
 static void duty_set(int argc, char **argv)
 {
+    SPEED_PID_ENABLED = 0;
+    POSITION_PID_ENABLED = 0;
     if (argc < 2)
     {
         rt_kprintf("Invalid arguments!\n");
@@ -612,9 +678,11 @@ static void duty_set(int argc, char **argv)
 
 static void enable_pid(int argc, char **argv)
 {
-    pid_enabled = atoi(argv[1]);
+    SPEED_PID_ENABLED = atoi(argv[1]);
+    POSITION_PID_ENABLED = atoi(argv[2]);
     rt_enter_critical();
-    rt_kprintf("PID controller status: %d.\n", pid_enabled);
+    rt_kprintf("SPEED_PID_ENABLED=%d.\n", SPEED_PID_ENABLED);
+    rt_kprintf("POSITION_PID_ENABLED=%d.\n", POSITION_PID_ENABLED);
     rt_exit_critical();
     return;
 }
@@ -634,9 +702,9 @@ void readV__D(void *parameter)
 {
     while (1)
     {
-        V_get();
-        Dis_get();
-        if (PRINT_ACC_ENABLED)
+        // V_get();
+        // Dis_get();
+        if (PRINT_SPEED_ENABLED)
             // rt_kprintf("%ld,%ld,%ld,%ld,%ld\n", (int32)(imu_acc_x * 100), (int32)(V_value.X * 100), (int32)(Dis.X * 100), (int32)(flag * 100), (int32)(100 * v_fr));
             rt_kprintf("%ld,%ld,%ld,%ld,%ld,%ld\n", (int32)(Dis2.X * 100), (int32)(Dis2.Y * 100), (int32)(100 * v_fl), (int32)(100 * v_fr), (int32)(100 * v_rl), (int32)(100 * v_rr));
         rt_thread_mdelay(25);
@@ -808,4 +876,31 @@ static void test_matrix_function()
     for (int i = 0; i < 9; i++)
         rt_kprintf("%ld\n", (int32)(100 * A_inv.pData[i]));
     rt_exit_critical();
+}
+
+static void position_set(int argc, char **argv)
+{
+    if (argc < 2)
+    {
+        rt_kprintf("Invalid arguments!\n");
+        return;
+    }
+    else if (!rt_strcmp(argv[1], "x"))
+    {
+        x_expect = atoi(argv[2]);
+        rt_kprintf("x_expect=%ld\n", (int32)(x_expect));
+        // rt_enter_critical();
+        // rt_kprintf("99999,99999,99999,99999\n");
+        // rt_exit_critical();
+        return;
+    }
+    else if (!rt_strcmp(argv[1], "y"))
+    {
+        y_expect = atoi(argv[2]);
+        rt_kprintf("y_expect=%ld\n", (int32)(y_expect));
+        // rt_kprintf("99999,99999,99999,99999\n");
+        return;
+    }
+    else
+        return;
 }

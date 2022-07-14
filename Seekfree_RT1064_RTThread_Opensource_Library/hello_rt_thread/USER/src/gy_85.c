@@ -377,15 +377,15 @@ void Dis_get(void)
 	Dis.X = kalmanFilter(&KFP_D_value_x, Dis.X);
 	Dis.Y = kalmanFilter(&KFP_D_value_y, Dis.Y);
 	//滤波
-	v_fl_filtered = kalmanFilter(&KFP_encoder_fl, v_fl);  //前左
-	v_fr_filtered = -kalmanFilter(&KFP_encoder_fr, v_fr); //前右
-	v_rl_filtered = kalmanFilter(&KFP_encoder_rl, v_rl);  //后左
-	v_rr_filtered = -kalmanFilter(&KFP_encoder_rr, v_rr); //后右
+	// v_fl_filtered = kalmanFilter(&KFP_encoder_fl, v_fl);  //前左
+	// v_fr_filtered = -kalmanFilter(&KFP_encoder_fr, v_fr); //前右
+	// v_rl_filtered = kalmanFilter(&KFP_encoder_rl, v_rl);  //后左
+	// v_rr_filtered = -kalmanFilter(&KFP_encoder_rr, v_rr); //后右
 
-	// v_fl_filtered = v_fl; //前左
-	// v_fr_filtered = v_fr; //前右
-	// v_rl_filtered = v_rl; //后左
-	// v_rr_filtered = v_rr; //后右
+	v_fl_filtered = v_fl; //前左
+	v_fr_filtered = -v_fr; //前右
+	v_rl_filtered = v_rl; //后左
+	v_rr_filtered = -v_rr; //后右
 
 	// 计算位移
 	Dis2.X += 1.414 / 2 * (v_fl_filtered + v_fr_filtered + v_rl_filtered + v_rr_filtered) * dt2;
