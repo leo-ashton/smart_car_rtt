@@ -23,7 +23,7 @@ float V_value_x_last = 0, V_value_y_last = 0;
 float ax = 0, ay = 0;
 int jiaozheng = 0;
 int flag = 0;
-extern float v_fl, v_fr, v_rl, v_rr;
+extern float v_fl, v_fr, v_rl, v_rr, omega_z;
 float v_fl_filtered = 0, v_fr_filtered = 0, v_rl_filtered = 0, v_rr_filtered = 0;
 
 //卡尔曼滤波设初值
@@ -369,13 +369,13 @@ void V_get(void)
 
 void Dis_get(void)
 {
-	static float dt2 = 0.05;
-	Dis.X += V_value.X * dt2 - (V_value.X - V_value_x_last) * dt2;
-	V_value_x_last = V_value.X;
-	Dis.Y += V_value.Y * dt2 - (V_value.Y - V_value_y_last) * dt2;
-	V_value_y_last = V_value.Y;
-	Dis.X = kalmanFilter(&KFP_D_value_x, Dis.X);
-	Dis.Y = kalmanFilter(&KFP_D_value_y, Dis.Y);
+	// static float dt2 = 0.05;
+	// Dis.X += V_value.X * dt2 - (V_value.X - V_value_x_last) * dt2;
+	// V_value_x_last = V_value.X;
+	// Dis.Y += V_value.Y * dt2 - (V_value.Y - V_value_y_last) * dt2;
+	// V_value_y_last = V_value.Y;
+	// Dis.X = kalmanFilter(&KFP_D_value_x, Dis.X);
+	// Dis.Y = kalmanFilter(&KFP_D_value_y, Dis.Y);
 	//滤波
 	// v_fl_filtered = kalmanFilter(&KFP_encoder_fl, v_fl);  //前左
 	// v_fr_filtered = -kalmanFilter(&KFP_encoder_fr, v_fr); //前右
@@ -383,11 +383,16 @@ void Dis_get(void)
 	// v_rr_filtered = -kalmanFilter(&KFP_encoder_rr, v_rr); //后右
 
 	v_fl_filtered = v_fl; //前左
-	v_fr_filtered = -v_fr; //前右
+	v_fr_filtered = v_fr; //前右
 	v_rl_filtered = v_rl; //后左
-	v_rr_filtered = -v_rr; //后右
+	v_rr_filtered = v_rr; //后右
 
 	// 计算位移
-	Dis2.X += 1.414 / 2 * (v_fl_filtered + v_fr_filtered + v_rl_filtered + v_rr_filtered) * dt2;
-	Dis2.Y += 1.414 / 2 * (-v_fl_filtered + v_fr_filtered + v_rl_filtered - v_rr_filtered) * dt2;
+	// Dis2.X += 1.414 / 2 * (v_fl_filtered + v_fr_filtered + v_rl_filtered + v_rr_filtered) * dt2;
+	// Dis2.Y += 1.414 / 2 * (-v_fl_filtered + v_fr_filtered + v_rl_filtered - v_rr_filtered) * dt2;
+
+	// Dis2.X += 1.414 / 2 * (v_fl + v_fr + v_rl + v_rr) * dt2;
+	// Dis2.Y += 1.414 / 2 * (-v_fl + v_fr + v_rl - v_rr) * dt2;
+
+	// theta += omega_z * dt2;
 }

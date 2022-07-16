@@ -113,15 +113,29 @@ extern "C"
 // * -------------------------------- 变换矩阵 -------------------------------- *//
 
 // **************************** 用户宏定义 ****************************
-#define FL_PWM (PWM1_MODULE3_CHA_D0)
-#define FR_PWM (PWM1_MODULE3_CHB_D1)
-#define RL_PWM (PWM2_MODULE2_CHB_C11)
-#define RR_PWM (PWM2_MODULE3_CHA_B9)
+// * -------------------------------- 更换母板前 -------------------------------- *//
+// #define FL_PWM (PWM1_MODULE3_CHA_D0)
+// #define FR_PWM (PWM1_MODULE3_CHB_D1)
+// #define RL_PWM (PWM2_MODULE2_CHB_C11)
+// #define RR_PWM (PWM2_MODULE3_CHA_B9)
+
+// #define FL_DIR (D2)
+// #define FR_DIR (D3)
+// #define RL_DIR (B12)
+// #define RR_DIR (B13)
+// * -------------------------------- 更换母板前 -------------------------------- *//
+
+// * -------------------------------- 更换母板后 -------------------------------- *//
+#define FL_PWM (PWM1_MODULE3_CHB_D1)
+#define FR_PWM (PWM2_MODULE3_CHB_D3)
+#define RL_PWM (PWM1_MODULE0_CHA_D12)
+#define RR_PWM (PWM1_MODULE1_CHA_D14)
 
 #define FL_DIR (D2)
-#define FR_DIR (D3)
-#define RL_DIR (B12)
-#define RR_DIR (B13)
+#define FR_DIR (D0)
+#define RL_DIR (D13)
+#define RR_DIR (D15)
+// * -------------------------------- 更换母板后 -------------------------------- *//
 
 #define duty_convert(x) (x / 100.0 * PWM_DUTY_MAX) // x为期望的占空比, 该函数将期望占空比直接转换为 pwm_duty 函数接受的参数
 
@@ -129,8 +143,63 @@ extern "C"
 #define encoder_line_count (1024.0)
 #define wheel_week_length (19.163) // 轮子周长, 单位为厘米
 #define wheel_gear_count (104.0)
+#define wheel_r (2.45)
+#define L_ (12.5) // 半长
+#define l_ (10)   // 半宽
 
-#define encoder_sample_time_ms (25.0)
+#define CORE_LED B9
+
+// * -------------------------------- 更换母板前 -------------------------------- *//
+// #define FL_ENCODER_A QTIMER1_TIMER2_C2
+// #define FL_ENCODER_B QTIMER1_TIMER3_C24
+
+// #define FR_ENCODER_A QTIMER1_TIMER0_C0
+// #define FR_ENCODER_B QTIMER1_TIMER1_C1
+
+// #define RL_ENCODER_A QTIMER3_TIMER0_B16
+// #define RL_ENCODER_B QTIMER3_TIMER1_B17
+
+// #define RR_ENCODER_A QTIMER4_TIMER0_C9
+// #define RR_ENCODER_B QTIMER4_TIMER1_C10
+// * -------------------------------- 更换母板前 -------------------------------- *//
+
+// * -------------------------------- 更换母板后 -------------------------------- *//
+#define FL_ENCODER_TIMER QTIMER_3
+#define FL_ENCODER_A QTIMER3_TIMER2_B18
+#define FL_ENCODER_B QTIMER3_TIMER3_B19
+
+#define FR_ENCODER_TIMER QTIMER_1
+#define FR_ENCODER_A QTIMER1_TIMER0_C0
+#define FR_ENCODER_B QTIMER1_TIMER1_C1
+
+#define RL_ENCODER_TIMER QTIMER_1
+#define RL_ENCODER_A QTIMER1_TIMER3_C24
+#define RL_ENCODER_B QTIMER1_TIMER2_C2
+
+#define RR_ENCODER_TIMER QTIMER_2
+#define RR_ENCODER_A QTIMER2_TIMER3_C25
+#define RR_ENCODER_B QTIMER2_TIMER0_C3
+
+#define ART_Front_UART USART_1
+#define ART_Down_UART USART_4
+
+#define ART_BAUD 115200
+
+#define ART_Front_UART_TX UART1_TX_B12 // 朝前看的
+#define ART_Down_UART_TX UART4_TX_C16  // 向下看的
+
+#define ART_Front_UART_RX UART1_RX_B13
+#define ART_Down_UART_RX UART4_RX_C17
+
+#define Magnet C30
+#define Servo_PWM PWM4_MODULE3_CHA_C31
+
+#define LED10 C6
+
+// C30电磁铁0/1 C31 舵机PWM
+// * -------------------------------- 更换母板后 -------------------------------- *//
+
+#define encoder_sample_time_ms (50.0) // ! 在这个数是50的时候pid好像不错
 // **************************** 用户宏定义 ****************************
 
 // **************************** 用户结构体类型定义 ****************************
